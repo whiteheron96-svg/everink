@@ -1,3 +1,4 @@
+import com.android.build.api.variant.FilterConfiguration
 import java.util.Properties
 
 plugins {
@@ -21,8 +22,8 @@ android {
         applicationId = "app.everink"
         minSdk = 26          // PRD 오픈퀘스천 #3: API 26 채택(SAF 성숙도 기준)
         targetSdk = 35
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
     }
 
     signingConfigs {
@@ -33,6 +34,17 @@ android {
                 keyAlias = keystoreProps.getProperty("keyAlias")
                 keyPassword = keystoreProps.getProperty("keyPassword")
             }
+        }
+    }
+
+    // ABI 분할: MuPDF 네이티브가 4개 아키텍처 합산 ~34MB라 기기별 APK로 나눈다.
+    // universal(통합본)도 함께 생성. IzzyOnDroid 30MB 제한 + 테스터 다운로드 경량화.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a", "x86_64")
+            isUniversalApk = true
         }
     }
 
@@ -64,4 +76,17 @@ dependencies {
 
     // MuPDF fitz — Artifex 공식 AAR (AGPL-3.0). 코어 렌더링/파싱 엔진.
     implementation("com.artifex.mupdf:fitz:1.28.0")
+}
+
+// ABI별 versionCode: base*10 + 오프셋 (universal이 가장 낮아 기기별 APK가 우선된다)
+androidComponents {
+    onVariants { variant ->
+        val base = 3   // defaultConfig.versionCode와 동일하게 유지할 것
+        val abiOffset = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
+        variant.outputs.forEach { output ->
+            val abi = output.filters
+                .find { it.filterType == FilterConfiguration.FilterType.ABI }?.identifier
+            output.versionCode.set(base * 10 + (abiOffset[abi] ?: 0))
+        }
+    }
 }
