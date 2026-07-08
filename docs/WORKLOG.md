@@ -393,9 +393,22 @@ Release v0.1.1 (same day): versionCode 2, design-system build.
 - Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.1
   with `EverInk-0.1.1.apk`. This is now the link to give beta testers.
 
+Release v0.1.2 (same day): per-ABI APKs.
+
+- ABI splits enabled (arm64-v8a / armeabi-v7a / x86_64 + universal); per-ABI
+  versionCode = base*10 + offset, universal lowest so device-specific APKs win.
+- Sizes: arm64 14.9MB, v7a 11.8MB, x86_64 15.3MB, universal 43.5MB — the
+  device APKs fit IzzyOnDroid's 30MB per-APK limit with room to spare.
+- Device-verified: 0.1.1 → 0.1.2(arm64, versionCode 32) update installed over
+  the existing app; all three documents of record survived.
+- Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.2
+  with all four APKs and a "which file do I download" guide in the notes.
+
 Immediate next actions:
 
-- IzzyOnDroid submission (v0.1.1 has the new look for store screenshots).
+- IzzyOnDroid submission: user creates a Codeberg account and files the App
+  Request issue (draft text prepared); after listing, releases sync
+  automatically.
 - Recruit beta testers; enroll them in Play closed testing once the developer
   account is ready (the 12 testers × 14 days clock starts there).
 - Consider ABI splits or app bundle later to cut the 45MB APK size.
