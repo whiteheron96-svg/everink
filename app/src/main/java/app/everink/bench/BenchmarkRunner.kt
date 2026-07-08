@@ -1,13 +1,7 @@
 package app.everink.bench
 
-import android.graphics.Bitmap
 import android.os.Debug
-import com.artifex.mupdf.fitz.Cookie
-import com.artifex.mupdf.fitz.Document
-import com.artifex.mupdf.fitz.Matrix
-import com.artifex.mupdf.fitz.android.AndroidDrawDevice
-import kotlin.math.ceil
-import kotlin.math.roundToInt
+import app.everink.core.render.PdfSession
 
 /**
  * MuPDF 대용량 렌더링 벤치마크의 순수 로직.
@@ -15,6 +9,8 @@ import kotlin.math.roundToInt
  * PRD v0.5 게이트 검증용:
  *  - 200MB 스캔본 첫 페이지 표시 ≤ 2000ms (중급기 기준)
  *  - 2,000페이지 문서 순회 시 OOM 크래시 0
+ *
+ * 렌더링 자체는 프로덕션과 동일한 [PdfSession]을 사용한다.
  *
  * 측정 항목: 문서 열기 시간, 첫 페이지 렌더 시간, 페이지당 평균 렌더 시간,
  *           네이티브 힙 피크 사용량.
@@ -65,20 +61,20 @@ object BenchmarkRunner {
         onProgress: (Int, Int) -> Unit = { _, _ -> },
     ): Result {
         val fileSizeMB = fileSize / (1024.0 * 1024.0)
-        var doc: Document? = null
+        var session: PdfSession? = null
         try {
             // 1) 문서 열기 + 페이지 수
             val tOpen = System.nanoTime()
-            doc = Document.openDocument(path)
-            if (doc.needsPassword()) {
+            session = PdfSession.open(path)
+            if (session.needsPassword()) {
                 return Result(fileName, fileSizeMB, 0, 0, 0, 0, 0.0, 0, 0.0, targetPx,
                     error = "암호 보호 문서 (스파이크 미지원)")
             }
-            val pageCount = doc.countPages()
+            val pageCount = session.pageCount
             val openMs = (System.nanoTime() - tOpen) / 1_000_000
 
             // 2) 첫 페이지 렌더
-            val firstPageMs = renderPage(doc, 0, targetPx)
+            val firstPageMs = renderPageTimed(session, 0, targetPx)
 
             // 3) 순회 렌더(균등 샘플링) — 2,000p OOM 게이트 겸용
             val step = if (pageCount <= maxSamples) 1 else pageCount / maxSamples
@@ -88,7 +84,7 @@ object BenchmarkRunner {
             var nativePeak = Debug.getNativeHeapAllocatedSize()
             var i = 0
             while (i < pageCount) {
-                val ms = renderPage(doc, i, targetPx)
+                val ms = renderPageTimed(session, i, targetPx)
                 sumMs += ms
                 if (ms > maxMs) maxMs = ms
                 sampled++
@@ -115,34 +111,14 @@ object BenchmarkRunner {
             return Result(fileName, fileSizeMB, 0, 0, 0, 0, 0.0, 0, 0.0, targetPx,
                 error = "${t.javaClass.simpleName}: ${t.message}")
         } finally {
-            doc?.destroy()
+            session?.close()
         }
     }
 
-    /** 한 페이지를 targetPx 가로폭에 맞춰 Bitmap으로 렌더하고 소요 ms 반환. 비트맵은 즉시 회수. */
-    private fun renderPage(doc: Document, index: Int, targetPx: Int): Long {
+    /** 한 페이지를 렌더하고 소요 ms 반환. 비트맵은 즉시 회수. */
+    private fun renderPageTimed(session: PdfSession, index: Int, targetPx: Int): Long {
         val t = System.nanoTime()
-        val page = doc.loadPage(index)
-        try {
-            val b = page.bounds
-            val wPts = (b.x1 - b.x0)
-            val hPts = (b.y1 - b.y0)
-            val scale = if (wPts > 0) targetPx / wPts else 1f
-            val w = ceil((wPts * scale).toDouble()).toInt().coerceAtLeast(1)
-            val h = ceil((hPts * scale).toDouble()).toInt().coerceAtLeast(1)
-            val ctm = Matrix(scale, scale)
-            val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-            val dev = AndroidDrawDevice(bmp, (b.x0 * scale).roundToInt(), (b.y0 * scale).roundToInt())
-            try {
-                page.run(dev, ctm, Cookie())
-                dev.close()
-            } finally {
-                dev.destroy()
-                bmp.recycle()
-            }
-        } finally {
-            page.destroy()
-        }
+        session.renderPage(index, targetPx).recycle()
         return (System.nanoTime() - t) / 1_000_000
     }
 }

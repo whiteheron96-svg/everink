@@ -1,19 +1,16 @@
 package app.everink.bench
 
-import com.artifex.mupdf.fitz.Document
-import com.artifex.mupdf.fitz.PDFAnnotation
-import com.artifex.mupdf.fitz.PDFDocument
-import com.artifex.mupdf.fitz.PDFPage
-import com.artifex.mupdf.fitz.Rect
+import app.everink.core.annot.AnnotationWriter
+import app.everink.core.store.DocumentStore
 import java.io.File
 import java.io.RandomAccessFile
-import java.nio.file.AtomicMoveNotSupportedException
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
 import java.security.MessageDigest
 
 /**
  * 저장 파이프라인 검증 — "주석이 절대 안 사라진다" 포지셔닝의 기술적 근거.
+ *
+ * 실제 저장 동작은 프로덕션 모듈 [DocumentStore]·[AnnotationWriter]가 수행하고,
+ * 이 스파이크는 그 결과를 바이트 수준에서 검증한다.
  *
  * 검증 항목(PRD 데이터안전 §2.2):
  *  - 증분 저장(Incremental): 원본 바이트 영역 무변경 (prefix 해시 동일)
@@ -56,10 +53,6 @@ object StorageSpike {
         return digest.digest().joinToString("") { "%02x".format(it) }.take(16)
     }
 
-    private fun copy(src: File, dst: File) {
-        src.inputStream().use { i -> dst.outputStream().use { o -> i.copyTo(o) } }
-    }
-
     /**
      * @param basePath  원본 PDF 경로(변경하지 않음)
      * @param workDir   작업 폴더(문서 사본·temp·백업)
@@ -68,9 +61,7 @@ object StorageSpike {
     fun run(basePath: String, workDir: File, sessions: Int = 5): Report {
         val steps = mutableListOf<Step>()
         val base = File(basePath)
-        workDir.mkdirs()
-        val target = File(workDir, "doc_of_record.pdf")
-        val backupsDir = File(workDir, "backups").apply { mkdirs() }
+        val store = DocumentStore(workDir, keepGenerations = 3)
 
         try {
             // 0) 원본 스냅샷: 크기 + prefix 해시
@@ -78,29 +69,24 @@ object StorageSpike {
             val baseHash = prefixHash(base, baseSize)
             steps += Step("원본 로드", true, "${base.name} · ${baseSize / 1024}KB · hash=$baseHash")
 
-            // 1) 문서 사본 = '기록 문서' 생성
-            if (target.exists()) target.delete()
-            copy(base, target)
+            // 1) 기록 문서 생성 (원본 → 사본)
+            val target = store.import(base)
             steps += Step("기록 문서 사본 생성", target.length() == baseSize,
                 "target=${target.length() / 1024}KB")
 
             // 2) N회 주석 세션 (매회: 백업 → temp 증분저장 → 원자적 rename)
+            //    스토어 프리미티브를 단계별로 호출해 중간 상태를 검증한다.
             var sessionOk = true
             var atomicOk = true
             var lastDetail = ""
             for (s in 0 until sessions) {
                 // 2a) 백업 (쓰기 전 스냅샷, 최근 3세대 유지)
-                val backup = File(backupsDir, "gen_${System.nanoTime()}_$s.pdf")
-                copy(target, backup)
-                trimBackups(backupsDir, keep = 3)
+                store.createBackup(tag = "$s")
 
-                // 2b) temp에 사본 → 주석 추가 → 증분 저장
-                val temp = File(workDir, "doc.tmp")
-                if (temp.exists()) temp.delete()
-                copy(target, temp)
-
+                // 2b) temp에 사본 → 주석 추가(증분 저장)
+                val temp = store.stageCopy()
                 val beforeSize = temp.length()
-                addAnnotation(temp.absolutePath, pageIndex = 0, label = "EverInk 세션 $s")
+                AnnotationWriter.addSquare(temp.absolutePath, pageIndex = 0, contents = "EverInk 세션 $s")
 
                 // 2c) 검증: 증분 저장은 앞부분(기존 바이트) 무변경 + 파일 증가
                 val grew = temp.length() >= beforeSize
@@ -112,7 +98,7 @@ object StorageSpike {
                 }
 
                 // 2d) 원자적 교체: temp → target
-                val replace = replaceAtomically(temp, target)
+                val replace = store.commit(temp)
                 if (!replace.ok) {
                     sessionOk = false
                     lastDetail = "세션 $s: ${replace.detail}"
@@ -129,12 +115,12 @@ object StorageSpike {
                 "base=$baseHash / target[0..baseSize]=$finalPrefix")
 
             // 4) 재열람: 주석이 N개 누적되어 살아있는가
-            val count = countAnnotations(target.absolutePath, 0)
+            val count = AnnotationWriter.annotationCount(target.absolutePath, 0)
             steps += Step("재열람 시 주석 누적 확인", count >= sessions,
                 "page0 주석 수=$count (기대 ≥$sessions)")
 
             // 5) 백업 존재(복원 가능성)
-            val bcount = backupsDir.listFiles()?.size ?: 0
+            val bcount = store.backupCount()
             steps += Step("백업 세대 보관", bcount in 1..3, "백업 파일 수=$bcount")
 
         } catch (t: Throwable) {
@@ -142,54 +128,5 @@ object StorageSpike {
         }
 
         return Report(steps, steps.all { it.ok })
-    }
-
-    /** page에 표준 Square 주석 하나 생성 + appearance stream 갱신 후 증분 저장. */
-    private fun addAnnotation(path: String, pageIndex: Int, label: String) {
-        val pdf = Document.openDocument(path) as PDFDocument
-        try {
-            val page = pdf.loadPage(pageIndex) as PDFPage
-            val annot = page.createAnnotation(PDFAnnotation.TYPE_SQUARE)
-            annot.rect = Rect(50f, 50f + pageIndex, 250f, 120f)
-            annot.setColor(floatArrayOf(0.95f, 0.75f, 0.1f))   // 노란 테두리
-            annot.setInteriorColor(floatArrayOf(1f, 0.98f, 0.6f))
-            annot.contents = label
-            annot.update()                                     // ★ appearance stream 생성 = 타 뷰어 호환
-            // 증분 저장: 기존 바이트 유지, 변경분만 append
-            pdf.save(path, "incremental")
-        } finally {
-            pdf.destroy()
-        }
-    }
-
-    private fun countAnnotations(path: String, pageIndex: Int): Int {
-        val pdf = Document.openDocument(path) as PDFDocument
-        try {
-            val page = pdf.loadPage(pageIndex) as PDFPage
-            return page.annotations?.size ?: 0
-        } finally {
-            pdf.destroy()
-        }
-    }
-
-    private fun trimBackups(dir: File, keep: Int) {
-        val files = dir.listFiles()?.sortedBy { it.lastModified() } ?: return
-        if (files.size > keep) files.take(files.size - keep).forEach { it.delete() }
-    }
-
-    private data class ReplaceResult(val ok: Boolean, val atomic: Boolean, val detail: String)
-
-    private fun replaceAtomically(temp: File, target: File): ReplaceResult = try {
-        Files.move(
-            temp.toPath(),
-            target.toPath(),
-            StandardCopyOption.ATOMIC_MOVE,
-            StandardCopyOption.REPLACE_EXISTING,
-        )
-        ReplaceResult(ok = true, atomic = true, detail = "atomic move")
-    } catch (e: AtomicMoveNotSupportedException) {
-        ReplaceResult(ok = false, atomic = false, detail = "atomic move 미지원: ${e.message}")
-    } catch (e: Exception) {
-        ReplaceResult(ok = false, atomic = false, detail = "${e.javaClass.simpleName}: ${e.message}")
     }
 }

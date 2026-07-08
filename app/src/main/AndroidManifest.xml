@@ -17,14 +17,27 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar">
 
+        <!-- 프로덕션 뷰어 진입점 -->
         <activity
-            android:name=".bench.BenchmarkActivity"
+            android:name=".viewer.ViewerActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:scheme="content" />
+                <data android:scheme="file" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
+
+        <!-- 스파이크/디버그 도구 (adb 자동화용으로 exported 유지) -->
+        <activity
+            android:name=".bench.BenchmarkActivity"
+            android:exported="true" />
 
         <activity
             android:name=".bench.StorageActivity"

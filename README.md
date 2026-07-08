@@ -16,16 +16,18 @@ the Android Storage Access Framework or the app-specific external files folder.
 
 As of 2026-07-08:
 
-- Android/Kotlin project scaffold is in place.
+- Android/Kotlin project scaffold is in place, with a dedicated Git repository.
 - Package/application id is `app.everink`.
 - MuPDF `com.artifex.mupdf:fitz` is included, so the project license direction is AGPL-3.0.
+- Production-shaped core modules:
+  - `core/render/PdfSession` — document open/auth/page rendering
+  - `core/store/DocumentStore` — backup + staged incremental save + atomic commit
+  - `core/annot/AnnotationWriter` — appearance-stream annotation writes
+- `viewer/ViewerActivity` is the launcher: continuous vertical page viewing, SAF and
+  ACTION_VIEW open paths, password prompt, background rendering with an LRU cache.
 - `BenchmarkActivity` runs rendering benchmarks for PDFs selected through SAF or pushed into the app folder.
 - `StorageActivity` runs the storage pipeline spike from SAF-selected PDFs or PDFs in the app folder.
-- `StorageSpike` checks incremental saves, prefix byte preservation, atomic replacement, backup generation, and annotation round trips.
-
-There are no project-local Git commits yet. The current Git root resolves to the
-user home directory, so project history should be treated as file state plus this
-work log until a dedicated repository is initialized for `everink`.
+- `StorageSpike` verifies the `DocumentStore`/`AnnotationWriter` pipeline byte-for-byte: incremental saves, prefix preservation, atomic replacement, backup generations, annotation round trips.
 
 ## Build
 
@@ -96,18 +98,8 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Make the Homebrew JDK discoverable for normal shell builds, or keep using the explicit `JAVA_HOME=...` command above.
-2. Install `app/build/outputs/apk/debug/app-debug.apk` on a real Android device.
-3. Run the rendering spike with:
-   - a 200MB scanned PDF
-   - a 2,000 page PDF
-   - a password-protected PDF
-   - a corrupt PDF
-4. Run the storage spike on the same PDFs and inspect saved annotations in at least two external viewers.
-5. Record benchmark results in `docs/WORKLOG.md`.
-6. Split spike code into production-shaped modules:
-   - document opening/rendering
-   - document-of-record storage
-   - annotation writing
-   - benchmark/debug UI
-7. Decide the final package id and AGPL/F-Droid release posture before publishing.
+1. Viewer polish: pinch/double-tap zoom, scroll position restore, recent-files list.
+2. Route viewer opens through `DocumentStore` so every opened PDF becomes a document of record.
+3. First annotation UX (square note) via `AnnotationWriter` + `DocumentStore.saveEdit`.
+4. Device-test password-protected and corrupt PDFs in the viewer.
+5. Decide the final package id and AGPL/F-Droid release posture; add a LICENSE file and set up the GitHub repository (GitHub → IzzyOnDroid → Play → F-Droid order).

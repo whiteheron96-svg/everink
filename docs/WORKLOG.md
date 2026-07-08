@@ -113,3 +113,34 @@ Device execution resumed after reconnect:
   - Samsung Notes showed the annotation appearance, but did not expose the annotation contents in the tested path.
   - Polaris Office showed the annotation contents, including `EverInk 세션 4`.
   - Xodo showed all 5 annotations. One annotation's contents were edited in Xodo, saved, and confirmed to persist after reopening.
+
+Production restructuring pass (same day, later session):
+
+- Initialized a dedicated Git repository inside `everink` and committed the spike state as the initial commit (`d453cd4`), so the pre-refactor baseline is permanently recoverable.
+- Split spike code into production-shaped modules:
+  - `app.everink.core.render.PdfSession` — document open/auth/page render; serializes MuPDF access per session.
+  - `app.everink.core.store.DocumentStore` — document-of-record pipeline: generation backups (keep 3), staged temp copy, atomic commit, `saveEdit` convenience entry point.
+  - `app.everink.core.annot.AnnotationWriter` — standards-compliant annotation writes (appearance stream + incremental save).
+- `BenchmarkRunner` now renders through `PdfSession`; `StorageSpike` now drives `DocumentStore` + `AnnotationWriter` primitives and keeps its byte-level verification (prefix hash) as the test layer.
+- Added the first production viewer UX: `app.everink.viewer.ViewerActivity`.
+  - Vertical continuous page list (RecyclerView), background single-thread rendering, 48MB LRU page cache, aspect-ratio placeholders.
+  - Opens PDFs via SAF picker and via external `ACTION_VIEW` intents (`content`/`file` schemes declared for lint compliance).
+  - Password-protected documents prompt for a password; corrupt documents surface a toast instead of crashing.
+  - ViewerActivity is now the launcher; bench activities remain exported for ADB autorun.
+- Added `androidx.recyclerview:recyclerview:1.3.2`.
+
+Validation:
+
+- `:app:assembleDebug` and `:app:lintDebug` pass; lint `0 errors, 4 warnings` (dependency-update notices plus the pre-existing ones).
+- Installed on `Galaxy S25` and smoke-tested the viewer with `window.pdf` via a `file://` ACTION_VIEW intent: pages render, scrolling works, status overlay shows `11p`. Screenshots verified.
+- Regression on refactored modules (device autoruns):
+  - Rendering: `big_pages.pdf` first page 57ms, `big_scan.pdf` first page 74ms, `window.pdf` 37ms — all gates PASS, no OOM.
+  - Storage: all 5 spike checks pass for `big_pages.pdf` (incremental, atomic move, prefix unchanged, 5 annotations, 3 backups).
+
+Immediate next actions:
+
+- Viewer: pinch zoom + double-tap zoom, page position restore, and open-history list.
+- Wire `DocumentStore` into the viewer so opened PDFs become documents of record (currently read-only cache copies).
+- First annotation UX (select area → square note) using `AnnotationWriter` through `DocumentStore.saveEdit`.
+- Test password-protected and corrupt PDFs on device (dialog path was only exercised locally).
+- Decide GitHub repository setup (AGPL-3.0 LICENSE file, README in English) before publishing.
