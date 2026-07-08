@@ -35,6 +35,15 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
     /** 배율이 확정된 시점(핀치 종료·더블탭) 콜백. 고해상 재렌더 트리거용. */
     var onScaleSettled: ((scale: Float) -> Unit)? = null
 
+    /**
+     * 필기 모드. 켜져 있으면 스크롤·줌·자식 터치를 모두 막고
+     * 콘텐츠 좌표로 변환된 터치를 [onInkTouch]로 보낸다.
+     */
+    var inkMode = false
+
+    /** 필기 모드 터치 콜백(이벤트 좌표는 콘텐츠 좌표계). */
+    var onInkTouch: ((MotionEvent) -> Unit)? = null
+
     private var scaleFactorZ = 1f
     private var tranX = 0f
     private var tranY = 0f
@@ -136,6 +145,13 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (inkMode) {
+            val transformed = MotionEvent.obtain(ev)
+            transformed.setLocation((ev.x - tranX) / scaleFactorZ, (ev.y - tranY) / scaleFactorZ)
+            onInkTouch?.invoke(transformed)
+            transformed.recycle()
+            return true
+        }
         scaleDetector.onTouchEvent(ev)
         gestureDetector.onTouchEvent(ev)
         if (scaleDetector.isInProgress) return true

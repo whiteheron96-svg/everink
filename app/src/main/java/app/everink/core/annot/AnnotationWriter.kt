@@ -1,9 +1,11 @@
 package app.everink.core.annot
 
+import android.graphics.PointF
 import com.artifex.mupdf.fitz.Document
 import com.artifex.mupdf.fitz.PDFAnnotation
 import com.artifex.mupdf.fitz.PDFDocument
 import com.artifex.mupdf.fitz.PDFPage
+import com.artifex.mupdf.fitz.Point
 import com.artifex.mupdf.fitz.Rect
 
 /**
@@ -33,6 +35,34 @@ object AnnotationWriter {
             annot.contents = contents
             annot.update()                     // appearance stream 생성 = 타 뷰어 호환
             pdf.save(path, "incremental")      // 기존 바이트 유지, 변경분만 append
+        }
+    }
+
+    /**
+     * 필기(Ink) 주석을 페이지별로 추가하고 한 번의 증분 저장으로 기록한다.
+     *
+     * @param strokesByPage 페이지 인덱스 → 획 목록. 각 획은 PDF 포인트 좌표열.
+     */
+    fun addInk(
+        path: String,
+        strokesByPage: Map<Int, List<List<PointF>>>,
+        color: FloatArray = floatArrayOf(0.12f, 0.29f, 0.85f),
+        strokeWidth: Float = 2.5f,
+    ) {
+        require(strokesByPage.isNotEmpty()) { "strokesByPage is empty" }
+        withPdf(path) { pdf ->
+            for ((pageIndex, strokes) in strokesByPage) {
+                if (strokes.isEmpty()) continue
+                val page = pdf.loadPage(pageIndex) as PDFPage
+                val annot = page.createAnnotation(PDFAnnotation.TYPE_INK)
+                annot.inkList = strokes.map { stroke ->
+                    stroke.map { Point(it.x, it.y) }.toTypedArray()
+                }.toTypedArray()
+                annot.setColor(color)
+                annot.borderWidth = strokeWidth
+                annot.update()                 // appearance stream = 타 뷰어 호환
+            }
+            pdf.save(path, "incremental")      // 기존 바이트 보존
         }
     }
 

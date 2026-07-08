@@ -275,9 +275,35 @@ Manual verification follow-up (same day):
   `unauthorized` after the adb daemon restarted); resolved by revoking and
   re-accepting USB debugging on the phone with "always allow".
 
+Viewer v5 pass (same day, seventh session): ink/freehand annotations.
+
+- `AnnotationWriter.addInk`: standard PDF Ink annotations (MuPDF `TYPE_INK` +
+  `inkList` + appearance stream) written per page in a single incremental save,
+  through the same backup → stage → atomic-commit pipeline as notes.
+- Viewer ink mode: 필기 button switches the toolbar to 저장/취소, scrolling and
+  zoom are suspended, and finger strokes are captured in content coordinates,
+  converted to PDF points against the page under the stroke's starting point,
+  and clamped to that page's bounds. `PageImageView` draws live blue previews
+  (2.5pt round-cap strokes) that match the saved rendering.
+- Strokes spanning multiple pages in one session are grouped per page and saved
+  as one Ink annotation per page in one incremental save.
+- Tapping saved ink reuses the existing annotation dialog (edit contents /
+  delete), since ink rects participate in the same hit test.
+
+Device validation (Galaxy S25, adb automation):
+
+- Drew two strokes (a horizontal underline and a diagonal that crossed the page
+  bottom — correctly clamped to the page edge). Preview matched the post-save
+  MuPDF rendering pixel-for-pixel in position and shape.
+- Pulled document of record: page 0 gained one `/Ink` annotation with 2 strokes
+  (50 and 57 points); pypdf parsed the `/InkList` structure cleanly.
+- Force-stopped and relaunched via the recent list: ink still renders
+  (3,150 blue stroke pixels detected on the reopened page).
+
 Immediate next actions:
 
-- Ink/freehand annotation type (the headline use case for a note-taking viewer).
+- Ink polish: color/width picker, eraser/undo before save, S Pen pressure later.
+- External-viewer check of ink (Polaris/Xodo), like the earlier note round-trip.
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
   Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
   user's go-ahead since it publishes the project.

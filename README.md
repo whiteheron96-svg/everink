@@ -37,6 +37,9 @@ As of 2026-07-08:
 - Documents MuPDF had to repair are flagged in the status bar (`⚠︎복구됨`).
 - In-document text search with per-page results and yellow match highlights;
   go-to-page and outline (bookmark) navigation from a slim top toolbar.
+- Ink mode: freehand strokes saved as standard PDF Ink annotations (appearance
+  stream + incremental save) through the same backup pipeline; live preview
+  matches the saved rendering.
 - A recent-documents list on the start screen reopens existing documents of record;
   long-press an entry to delete its document of record and backups.
 - `LICENSE` is AGPL-3.0.
@@ -113,6 +116,6 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Ink/freehand annotations.
+1. Ink polish: color/width picker, undo before save; external-viewer ink check.
 2. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.

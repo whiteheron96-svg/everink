@@ -5,6 +5,8 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.PointF
 import android.graphics.RectF
 import android.widget.ImageView
 
@@ -27,14 +29,31 @@ class PageImageView(context: Context) : ImageView(context) {
             invalidate()
         }
 
+    /** 저장 전 미리보기용 필기 획(PDF 포인트 좌표). */
+    var inkStrokes: List<List<PointF>> = emptyList()
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     private val paint = Paint().apply {
         color = Color.argb(90, 255, 190, 0)
         style = Paint.Style.FILL
     }
 
+    private val inkPaint = Paint().apply {
+        color = Color.rgb(31, 74, 217)
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+        isAntiAlias = true
+    }
+
+    private val inkPath = Path()
+
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        if (highlights.isEmpty() || pageWidthPts <= 0f || width == 0) return
+        if (pageWidthPts <= 0f || width == 0) return
         val s = width / pageWidthPts
         for (r in highlights) {
             canvas.drawRect(
@@ -44,6 +63,21 @@ class PageImageView(context: Context) : ImageView(context) {
                 (r.bottom - pageY0) * s,
                 paint,
             )
+        }
+        if (inkStrokes.isNotEmpty()) {
+            inkPaint.strokeWidth = 2.5f * s
+            for (stroke in inkStrokes) {
+                if (stroke.isEmpty()) continue
+                inkPath.reset()
+                inkPath.moveTo((stroke[0].x - pageX0) * s, (stroke[0].y - pageY0) * s)
+                for (i in 1 until stroke.size) {
+                    inkPath.lineTo((stroke[i].x - pageX0) * s, (stroke[i].y - pageY0) * s)
+                }
+                if (stroke.size == 1) {
+                    inkPath.lineTo((stroke[0].x - pageX0) * s + 1f, (stroke[0].y - pageY0) * s)
+                }
+                canvas.drawPath(inkPath, inkPaint)
+            }
         }
     }
 }

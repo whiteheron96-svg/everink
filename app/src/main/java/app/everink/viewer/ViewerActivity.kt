@@ -6,6 +6,7 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.PointF
 import android.graphics.RectF
 import android.net.Uri
 import android.os.Build
@@ -64,6 +65,12 @@ class ViewerActivity : Activity() {
     private var currentName: String = ""
     private var currentRepaired: Boolean = false
     private lateinit var topBar: LinearLayout
+    private lateinit var btnSearch: TextView
+    private lateinit var btnGoto: TextView
+    private lateinit var btnOutline: TextView
+    private lateinit var btnInk: TextView
+    private lateinit var btnInkSave: TextView
+    private lateinit var btnInkCancel: TextView
     private var lastQuery: String = ""
     // 페이지별 검색 일치(바깥=건, 안쪽=사각형들). PDF 포인트 좌표.
     private val searchHits = HashMap<Int, List<List<RectF>>>()
@@ -72,6 +79,19 @@ class ViewerActivity : Activity() {
     private var renderQuality = 1
 
     private val docsRoot: File by lazy { File(filesDir, "documents") }
+
+    // 필기 모드 상태: 페이지별 확정 획 + 진행 중 획 (좌표는 PDF 포인트)
+    private var inkMode = false
+    private val pendingInk = HashMap<Int, MutableList<List<PointF>>>()
+    private var activeStroke: MutableList<PointF>? = null
+    private var activePage = -1
+    private var activeChildLeft = 0
+    private var activeChildTop = 0
+    private var activePxPerPt = 1f
+    private var activeBounds: PdfSession.PageBounds? = null
+
+    // 페이지 경계 캐시(어댑터가 채우고 필기 좌표 변환이 읽음)
+    private val pageBoundsCache = HashMap<Int, PdfSession.PageBounds>()
 
     // 페이지 비트맵 캐시(기본 48MB, 고해상 렌더 시 2배로 확장). 축출분은 GC가 회수.
     private val pageCache = object : LruCache<Int, Bitmap>(CACHE_BYTES) {
@@ -120,6 +140,7 @@ class ViewerActivity : Activity() {
             visibility = View.GONE
             onSingleTap = { x, y -> handlePageTap(x, y) }
             onScaleSettled = { scale -> onZoomSettled(scale) }
+            onInkTouch = { ev -> handleInkTouch(ev) }
         }
 
         topBar = LinearLayout(this).apply {
@@ -133,9 +154,20 @@ class ViewerActivity : Activity() {
                 setPadding(36, 20, 36, 20)
                 setOnClickListener { onClick() }
             }
-            addView(tool("검색") { promptSearch() })
-            addView(tool("이동") { promptGoto() })
-            addView(tool("목차") { showOutline() })
+            btnSearch = tool("검색") { promptSearch() }
+            btnGoto = tool("이동") { promptGoto() }
+            btnOutline = tool("목차") { showOutline() }
+            btnInk = tool("필기") { setInkMode(true) }
+            btnInkSave = tool("저장") { saveInk() }
+            btnInkCancel = tool("취소") { setInkMode(false) }
+            btnInkSave.visibility = View.GONE
+            btnInkCancel.visibility = View.GONE
+            addView(btnSearch)
+            addView(btnGoto)
+            addView(btnOutline)
+            addView(btnInk)
+            addView(btnInkSave)
+            addView(btnInkCancel)
         }
 
         statusView = TextView(this).apply {
@@ -287,6 +319,8 @@ class ViewerActivity : Activity() {
         pageList.adapter = PageAdapter(s)
         searchHits.clear()
         lastQuery = ""
+        pageBoundsCache.clear()
+        if (inkMode) setInkMode(false)
         emptyView.visibility = View.GONE
         pageList.visibility = View.VISIBLE
         statusView.visibility = View.VISIBLE
@@ -337,6 +371,9 @@ class ViewerActivity : Activity() {
         session = null
         currentStore = null
         searchHits.clear()
+        pendingInk.clear()
+        activeStroke = null
+        activePage = -1
         if (::topBar.isInitialized) topBar.visibility = View.GONE
     }
 
@@ -471,6 +508,111 @@ class ViewerActivity : Activity() {
             } catch (t: Throwable) {
                 android.util.Log.w("EverInkViewer", "annotation $label 실패", t)
                 runOnUiThread { toast("$label 실패: ${t.message ?: t.javaClass.simpleName}") }
+            }
+        }.start()
+    }
+
+    // ---- 필기(잉크) ----
+
+    private fun setInkMode(on: Boolean) {
+        if (session == null && on) return
+        inkMode = on
+        pageList.inkMode = on
+        btnSearch.visibility = if (on) View.GONE else View.VISIBLE
+        btnGoto.visibility = if (on) View.GONE else View.VISIBLE
+        btnOutline.visibility = if (on) View.GONE else View.VISIBLE
+        btnInk.visibility = if (on) View.GONE else View.VISIBLE
+        btnInkSave.visibility = if (on) View.VISIBLE else View.GONE
+        btnInkCancel.visibility = if (on) View.VISIBLE else View.GONE
+        if (!on) {
+            pendingInk.clear()
+            activeStroke = null
+            activePage = -1
+            refreshInkOverlays()
+        }
+        if (on) {
+            statusView.text = "필기 모드 · 손가락으로 긋고 [저장]"
+        } else {
+            session?.let { statusView.text = statusText(it) }
+        }
+    }
+
+    private fun handleInkTouch(ev: MotionEvent) {
+        when (ev.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                val child = pageList.findChildViewUnder(ev.x, ev.y) ?: return
+                val holder = pageList.getChildViewHolder(child) as? PageHolder ?: return
+                val page = holder.boundPage
+                val b = pageBoundsCache[page] ?: return   // 아직 렌더 전이면 무시
+                if (page < 0 || child.width <= 0) return
+                activePage = page
+                activeBounds = b
+                activeChildLeft = child.left
+                activeChildTop = child.top
+                activePxPerPt = child.width / b.width
+                activeStroke = mutableListOf(toPdfPoint(ev.x, ev.y))
+                refreshInkOverlays()
+            }
+            MotionEvent.ACTION_MOVE -> {
+                activeStroke?.add(toPdfPoint(ev.x, ev.y))
+                refreshInkOverlays()
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val stroke = activeStroke
+                if (stroke != null && stroke.size >= 2) {
+                    pendingInk.getOrPut(activePage) { mutableListOf() }.add(stroke)
+                }
+                activeStroke = null
+                refreshInkOverlays()
+            }
+        }
+    }
+
+    private fun toPdfPoint(contentX: Float, contentY: Float): PointF {
+        val b = activeBounds ?: return PointF(0f, 0f)
+        val x = (b.x0 + (contentX - activeChildLeft) / activePxPerPt).coerceIn(b.x0, b.x1)
+        val y = (b.y0 + (contentY - activeChildTop) / activePxPerPt).coerceIn(b.y0, b.y1)
+        return PointF(x, y)
+    }
+
+    /** 화면에 보이는 페이지들의 필기 미리보기 오버레이를 갱신한다. */
+    private fun refreshInkOverlays() {
+        for (i in 0 until pageList.childCount) {
+            val holder = pageList.getChildViewHolder(pageList.getChildAt(i)) as? PageHolder ?: continue
+            holder.image.inkStrokes = inkStrokesFor(holder.boundPage)
+        }
+    }
+
+    private fun inkStrokesFor(page: Int): List<List<PointF>> {
+        val done = pendingInk[page].orEmpty()
+        val active = activeStroke
+        return if (active != null && page == activePage) done + listOf(active.toList()) else done
+    }
+
+    private fun saveInk() {
+        val store = currentStore ?: return
+        val groups = pendingInk.filterValues { it.isNotEmpty() }.mapValues { it.value.toList() }
+        if (groups.isEmpty()) {
+            toast("저장할 필기가 없습니다")
+            return
+        }
+        statusView.text = "저장 중…"
+        Thread {
+            try {
+                val result = store.saveEdit { tmpPath -> AnnotationWriter.addInk(tmpPath, groups) }
+                runOnUiThread {
+                    if (result.ok) {
+                        setInkMode(false)
+                        refreshDocument()
+                        toast("필기 저장됨 · 백업 ${store.backupCount()}세대 보관")
+                    } else {
+                        session?.let { statusView.text = statusText(it) }
+                        toast("저장 실패: ${result.detail}")
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("EverInkViewer", "ink 저장 실패", t)
+                runOnUiThread { toast("저장 실패: ${t.message ?: t.javaClass.simpleName}") }
             }
         }.start()
     }
@@ -688,8 +830,6 @@ class ViewerActivity : Activity() {
 
     private inner class PageAdapter(val s: PdfSession) : RecyclerView.Adapter<PageHolder>() {
 
-        private val boundsCache = HashMap<Int, PdfSession.PageBounds>()
-
         override fun getItemCount(): Int = s.pageCount
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
@@ -728,7 +868,7 @@ class ViewerActivity : Activity() {
 
             // 자리표시자 높이: 페이지 비율 기준(스크롤 점프 방지)
             val width = if (pageList.width > 0) pageList.width else resources.displayMetrics.widthPixels
-            val known = boundsCache[position]
+            val known = pageBoundsCache[position]
             holder.image.setImageBitmap(null)
             holder.image.minimumHeight =
                 (((known?.let { it.height / it.width }) ?: 1.4142f) * width).toInt()
@@ -736,8 +876,8 @@ class ViewerActivity : Activity() {
             renderExecutor?.execute {
                 if (holder.boundPage != position || session !== s) return@execute
                 try {
-                    val b = boundsCache[position] ?: s.pageBounds(position).also {
-                        boundsCache[position] = it
+                    val b = pageBoundsCache[position] ?: s.pageBounds(position).also {
+                        pageBoundsCache[position] = it
                     }
                     val bmp = pageCache.get(position)
                         ?: s.renderPage(position, width * renderQuality).also {
@@ -758,19 +898,21 @@ class ViewerActivity : Activity() {
 
         /** 검색 하이라이트와 좌표 변환 정보를 뷰에 반영한다. */
         private fun bindOverlay(holder: PageHolder, position: Int) {
-            val b = boundsCache[position]
+            val b = pageBoundsCache[position]
             if (b != null) {
                 holder.image.pageX0 = b.x0
                 holder.image.pageY0 = b.y0
                 holder.image.pageWidthPts = b.width
             }
             holder.image.highlights = searchHits[position]?.flatten() ?: emptyList()
+            holder.image.inkStrokes = inkStrokesFor(position)
         }
 
         override fun onViewRecycled(holder: PageHolder) {
             holder.boundPage = -1
             holder.image.setImageBitmap(null)
             holder.image.highlights = emptyList()
+            holder.image.inkStrokes = emptyList()
         }
     }
 
