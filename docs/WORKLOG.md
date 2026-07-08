@@ -384,10 +384,18 @@ Design system pass ("잉크 & 종이", same day):
 - Device-verified (light + dark screenshots): home, viewer pills, ✕ close
   returning to home, and the 심야 잉크 dark palette all render as designed.
 
+Release v0.1.1 (same day): versionCode 2, design-system build.
+
+- Installed over 0.1.0 on device as an update (same signing key): version
+  confirmed 0.1.1, no crash, and all existing documents of record (including
+  the user's own real document) survived — the lossless update path testers
+  will follow is proven.
+- Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.1
+  with `EverInk-0.1.1.apk`. This is now the link to give beta testers.
+
 Immediate next actions:
 
-- IzzyOnDroid submission (release with APK now exists) — cut v0.1.1 with the
-  design system first so store screenshots use the new look.
+- IzzyOnDroid submission (v0.1.1 has the new look for store screenshots).
 - Recruit beta testers; enroll them in Play closed testing once the developer
   account is ready (the 12 testers × 14 days clock starts there).
 - Consider ABI splits or app bundle later to cut the 45MB APK size.
