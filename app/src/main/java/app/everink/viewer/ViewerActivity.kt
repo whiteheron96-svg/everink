@@ -53,7 +53,7 @@ class ViewerActivity : Activity() {
 
     private lateinit var emptyView: LinearLayout
     private lateinit var recentList: LinearLayout
-    private lateinit var pageList: RecyclerView
+    private lateinit var pageList: ZoomableRecyclerView
     private lateinit var statusView: TextView
 
     private var session: PdfSession? = null
@@ -104,10 +104,11 @@ class ViewerActivity : Activity() {
             }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         }
 
-        pageList = RecyclerView(this).apply {
+        pageList = ZoomableRecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@ViewerActivity)
             setBackgroundColor(Color.rgb(0x22, 0x22, 0x22))
             visibility = View.GONE
+            onSingleTap = { x, y -> handlePageTap(x, y) }
         }
 
         statusView = TextView(this).apply {
@@ -174,27 +175,35 @@ class ViewerActivity : Activity() {
     private fun openSource(source: File, displayName: String) {
         val dir = File(docsRoot, docIdOf(source))
         val store = DocumentStore(dir)
-        if (!store.document.exists()) store.import(source)
+        val isNew = !store.document.exists()
+        if (isNew) store.import(source)
         File(dir, "name.txt").writeText(displayName)
         source.delete()   // 캐시 사본은 더 이상 불필요
-        openStore(store, displayName)
+        val opened = openStore(store, displayName)
+        // 방금 들여온 문서가 열리지 않으면 빈 기록 문서를 남기지 않는다
+        if (!opened && isNew) {
+            dir.deleteRecursively()
+            refreshRecent()
+        }
     }
 
-    private fun openStore(store: DocumentStore, displayName: String) {
+    /** @return 문서를 여는 데 성공했으면 true (암호 대기 상태 포함) */
+    private fun openStore(store: DocumentStore, displayName: String): Boolean {
         closeDocument()
         val s = try {
             PdfSession.open(store.document.absolutePath)
         } catch (t: Throwable) {
             toast("문서를 열 수 없습니다: ${t.message ?: t.javaClass.simpleName}")
-            return
+            return false
         }
         currentStore = store
         currentName = displayName
         if (s.needsPassword()) {
             promptPassword(s)
-            return
+            return true
         }
         showDocument(s)
+        return true
     }
 
     private fun promptPassword(s: PdfSession) {
@@ -226,7 +235,7 @@ class ViewerActivity : Activity() {
         emptyView.visibility = View.GONE
         pageList.visibility = View.VISIBLE
         statusView.visibility = View.VISIBLE
-        statusView.text = "$currentName · ${s.pageCount}p · 길게 눌러 메모"
+        statusView.text = "$currentName · ${s.pageCount}p · 길게=메모 · 메모 탭=보기"
     }
 
     /** 주석 저장 후 새 기록 문서로 세션을 다시 연다(스크롤 위치 유지). */
@@ -242,7 +251,7 @@ class ViewerActivity : Activity() {
         pageCache.evictAll()
         pageList.adapter = PageAdapter(s)
         if (pos > 0) lm.scrollToPosition(pos)
-        statusView.text = "$currentName · ${s.pageCount}p · 길게 눌러 메모"
+        statusView.text = "$currentName · ${s.pageCount}p · 길게=메모 · 메모 탭=보기"
     }
 
     private fun closeDocument() {
@@ -302,6 +311,94 @@ class ViewerActivity : Activity() {
         }.start()
     }
 
+    // ---- 주석 조회·수정·삭제 ----
+
+    /** 단일탭(콘텐츠 좌표) → 페이지·주석 히트테스트 → 내용 다이얼로그. */
+    private fun handlePageTap(contentX: Float, contentY: Float) {
+        val s = session ?: return
+        val store = currentStore ?: return
+        val child = pageList.findChildViewUnder(contentX, contentY) ?: return
+        val holder = pageList.getChildViewHolder(child) as? PageHolder ?: return
+        val page = holder.boundPage
+        if (page < 0 || child.width <= 0) return
+        val xInPage = contentX - child.left
+        val yInPage = contentY - child.top
+        Thread {
+            try {
+                val b = s.pageBounds(page)
+                val scale = child.width / b.width
+                val pdfX = b.x0 + xInPage / scale
+                val pdfY = b.y0 + yInPage / scale
+                val hit = AnnotationWriter.list(store.document.absolutePath, page)
+                    .lastOrNull { it.contains(pdfX, pdfY) } ?: return@Thread
+                runOnUiThread { showAnnotationDialog(page, hit) }
+            } catch (t: Throwable) {
+                android.util.Log.w("EverInkViewer", "annotation 조회 실패", t)
+            }
+        }.start()
+    }
+
+    private fun showAnnotationDialog(page: Int, annot: AnnotationWriter.AnnotInfo) {
+        AlertDialog.Builder(this)
+            .setTitle("메모 · ${page + 1}쪽")
+            .setMessage(annot.contents.ifBlank { "(내용 없음)" })
+            .setPositiveButton("수정") { _, _ -> promptEditAnnotation(page, annot) }
+            .setNegativeButton("삭제") { _, _ -> confirmDeleteAnnotation(page, annot) }
+            .setNeutralButton("닫기", null)
+            .show()
+    }
+
+    private fun promptEditAnnotation(page: Int, annot: AnnotationWriter.AnnotInfo) {
+        val input = EditText(this).apply { setText(annot.contents) }
+        AlertDialog.Builder(this)
+            .setTitle("메모 수정 · ${page + 1}쪽")
+            .setView(input)
+            .setPositiveButton("저장") { _, _ ->
+                applyAnnotationEdit("수정") { tmpPath ->
+                    AnnotationWriter.updateContents(tmpPath, page, annot.index,
+                        input.text.toString().ifBlank { "메모" })
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun confirmDeleteAnnotation(page: Int, annot: AnnotationWriter.AnnotInfo) {
+        AlertDialog.Builder(this)
+            .setTitle("메모 삭제")
+            .setMessage("이 메모를 삭제할까요?\n\n\"${annot.contents}\"\n\n삭제 전 상태는 백업 세대에 보관됩니다.")
+            .setPositiveButton("삭제") { _, _ ->
+                applyAnnotationEdit("삭제") { tmpPath ->
+                    AnnotationWriter.delete(tmpPath, page, annot.index)
+                }
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    /** 백업→temp 증분→원자 교체 경로로 편집을 적용하고 화면을 갱신한다. */
+    private fun applyAnnotationEdit(label: String, edit: (String) -> Unit) {
+        val store = currentStore ?: return
+        statusView.text = "저장 중…"
+        Thread {
+            try {
+                val result = store.saveEdit(edit)
+                runOnUiThread {
+                    if (result.ok) {
+                        refreshDocument()
+                        toast("메모 $label 완료 · 백업 ${store.backupCount()}세대 보관")
+                    } else {
+                        session?.let { statusView.text = "$currentName · ${it.pageCount}p" }
+                        toast("$label 실패: ${result.detail}")
+                    }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("EverInkViewer", "annotation $label 실패", t)
+                runOnUiThread { toast("$label 실패: ${t.message ?: t.javaClass.simpleName}") }
+            }
+        }.start()
+    }
+
     // ---- 최근 문서 ----
 
     private fun refreshRecent() {
@@ -322,8 +419,28 @@ class ViewerActivity : Activity() {
                 text = name
                 isAllCaps = false
                 setOnClickListener { openStore(DocumentStore(dir), name) }
+                setOnLongClickListener {
+                    confirmDeleteRecent(dir, name)
+                    true
+                }
             }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
         }
+    }
+
+    private fun confirmDeleteRecent(dir: File, name: String) {
+        AlertDialog.Builder(this)
+            .setTitle("문서 삭제")
+            .setMessage("\"$name\" 기록 문서와 메모·백업을 모두 삭제할까요?\n원본 파일은 영향을 받지 않습니다.")
+            .setPositiveButton("삭제") { _, _ ->
+                if (dir.deleteRecursively()) {
+                    toast("삭제됨: $name")
+                } else {
+                    toast("삭제 실패")
+                }
+                refreshRecent()
+            }
+            .setNegativeButton("취소", null)
+            .show()
     }
 
     // ---- 유틸 ----

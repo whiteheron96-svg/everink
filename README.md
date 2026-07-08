@@ -28,7 +28,11 @@ As of 2026-07-08:
 - Opened PDFs are imported as documents of record under `filesDir/documents/<id>/`;
   long-press on a page adds a note (square annotation) saved through the
   backup → incremental → atomic-replace pipeline. Annotations survive app restarts.
-- A recent-documents list on the start screen reopens existing documents of record.
+- Tapping a note shows its contents with edit/delete; both actions go through the
+  same backup pipeline, so previous states stay recoverable.
+- Pinch zoom (1x–4x) and double-tap zoom toggle via `ZoomableRecyclerView`.
+- A recent-documents list on the start screen reopens existing documents of record;
+  long-press an entry to delete its document of record and backups.
 - `LICENSE` is AGPL-3.0.
 - `BenchmarkActivity` runs rendering benchmarks for PDFs selected through SAF or pushed into the app folder.
 - `StorageActivity` runs the storage pipeline spike from SAF-selected PDFs or PDFs in the app folder.
@@ -103,9 +107,8 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Pinch/double-tap zoom in the viewer.
-2. Annotation editing/deleting; show note contents on tap.
-3. Recent-list management (delete, rename); notice for auto-repaired documents.
-4. Avoid full-file staging copies per annotation on very large documents.
-5. Decide the final package id; set up the GitHub repository and follow the
+1. Re-render pages at higher resolution while zoomed (currently base-width bitmaps).
+2. Avoid full-file staging copies per annotation on very large documents.
+3. Notice for auto-repaired documents; rename in the recent list.
+4. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.

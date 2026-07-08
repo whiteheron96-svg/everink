@@ -179,10 +179,43 @@ Known gaps noted for later:
 - No way to delete a document from the recent list yet.
 - `corrupt.pdf`-style repaired documents show blank pages with no notice.
 
+Viewer v2 pass (same day, fourth session): zoom + annotation management.
+
+- `ZoomableRecyclerView`: pinch zoom (1x–4x) and double-tap zoom toggle (1x ↔ 2x).
+  Drawing uses a canvas transform; child views receive inverse-transformed touch
+  events, so tap/long-press coordinate mapping is zoom-independent. Vertical
+  scrolling stays native; vertical panning takes over at list edges; horizontal
+  panning is active while zoomed. Render resolution is still base width, so high
+  zoom is soft — per-scale re-render is future work.
+- Annotation management: single tap on a note opens a dialog showing its contents
+  with 수정/삭제/닫기. Edit and delete both go through `DocumentStore.saveEdit`
+  (backup → incremental temp save → atomic replace), so the pre-edit and
+  pre-delete states are always recoverable from backup generations.
+  `AnnotationWriter` gained `list`/`updateContents`/`delete`.
+- Recent-list management: long-press a recent document → confirm → the store
+  directory (document of record + backups) is deleted. Originals are unaffected.
+- Bug fix: a file that fails to open (e.g. random bytes) no longer leaves an
+  imported store directory behind in the recent list.
+
+Device validation (Galaxy S25, adb automation):
+
+- Tap on the `EverInk-note-1` square → dialog showed the exact contents.
+- Edit appended `-edited`; pulled document of record shows
+  `EverInk-note-1-edited`, backups grew to 2 generations.
+- Double-tap zoomed to 2x at the tap point (screenshot-verified) and a second
+  double-tap returned pixel-identical to the 1x baseline. Pinch zoom shares the
+  same transform path but was not automatable over adb — verify by hand on device.
+- Delete flow: confirm dialog → page 0 annotation count 0 in the pulled file,
+  3 backup generations retained (deletion is recoverable).
+- Long-pressed the stale `garbage.pdf` recent entry → deleted; after the bug fix,
+  reopening `garbage.pdf` fails with a toast and leaves no recent entry.
+
 Immediate next actions:
 
-- Pinch zoom + double-tap zoom in the viewer.
-- Annotation editing/deleting; show annotation contents on tap.
-- Recent-list management (delete, rename).
+- Manual pinch-zoom check on device (double-tap path is verified).
+- Re-render pages at higher resolution when zoomed for sharp text.
+- Avoid full-file staging copies per annotation edit on very large documents.
+- Notice for auto-repaired (corrupt-but-openable) documents.
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
-  Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan.
+  Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
+  user's go-ahead since it publishes the project.
