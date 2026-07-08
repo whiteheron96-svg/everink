@@ -35,6 +35,8 @@ As of 2026-07-08:
 - Backups are created by atomic rename (zero IO), so each annotation edit costs a
   single full-file copy; interrupted edits self-recover from the newest backup.
 - Documents MuPDF had to repair are flagged in the status bar (`⚠︎복구됨`).
+- In-document text search with per-page results and yellow match highlights;
+  go-to-page and outline (bookmark) navigation from a slim top toolbar.
 - A recent-documents list on the start screen reopens existing documents of record;
   long-press an entry to delete its document of record and backups.
 - `LICENSE` is AGPL-3.0.
@@ -111,8 +113,7 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Manual pinch-zoom check on a device (double-tap zoom is verified).
-2. Text search; page thumbnails/outline navigation.
-3. Ink/freehand annotations.
-4. Decide the final package id; set up the GitHub repository and follow the
+1. Manual checks: pinch zoom, and outline navigation with a TOC-bearing PDF.
+2. Ink/freehand annotations.
+3. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.

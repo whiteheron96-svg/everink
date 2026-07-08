@@ -1,9 +1,11 @@
 package app.everink.core.render
 
 import android.graphics.Bitmap
+import android.graphics.RectF
 import com.artifex.mupdf.fitz.Cookie
 import com.artifex.mupdf.fitz.Document
 import com.artifex.mupdf.fitz.Matrix
+import com.artifex.mupdf.fitz.Outline
 import com.artifex.mupdf.fitz.PDFDocument
 import com.artifex.mupdf.fitz.android.AndroidDrawDevice
 import kotlin.math.ceil
@@ -98,6 +100,57 @@ class PdfSession private constructor(
         } finally {
             page.destroy()
         }
+    }
+
+    /**
+     * 페이지에서 [needle]을 검색해 일치 영역들을 PDF 포인트 좌표로 반환한다.
+     * 바깥 리스트 = 일치 건, 안쪽 리스트 = 그 건을 덮는 사각형들(여러 줄 걸침 대응).
+     */
+    @Synchronized
+    fun searchPage(index: Int, needle: String): List<List<RectF>> {
+        if (needle.isBlank()) return emptyList()
+        val page = doc.loadPage(index)
+        try {
+            val hits = page.search(needle) ?: return emptyList()
+            return hits.map { quads ->
+                quads.map { q ->
+                    RectF(
+                        minOf(q.ul_x, q.ll_x, q.ur_x, q.lr_x),
+                        minOf(q.ul_y, q.ur_y, q.ll_y, q.lr_y),
+                        maxOf(q.ur_x, q.lr_x, q.ul_x, q.ll_x),
+                        maxOf(q.ll_y, q.lr_y, q.ul_y, q.ur_y),
+                    )
+                }
+            }
+        } finally {
+            page.destroy()
+        }
+    }
+
+    data class OutlineItem(val title: String, val page: Int, val depth: Int)
+
+    /** 문서 목차(북마크)를 깊이 정보와 함께 평탄화해 반환. 없으면 빈 리스트. */
+    @Synchronized
+    fun outline(): List<OutlineItem> {
+        val root = try {
+            doc.loadOutline()
+        } catch (t: Throwable) {
+            null
+        } ?: return emptyList()
+        val out = mutableListOf<OutlineItem>()
+        fun walk(items: Array<Outline>, depth: Int) {
+            for (o in items) {
+                val page = try {
+                    doc.pageNumberFromLocation(doc.resolveLink(o))
+                } catch (t: Throwable) {
+                    -1
+                }
+                out += OutlineItem(o.title ?: "(제목 없음)", page, depth)
+                o.down?.let { walk(it, depth + 1) }
+            }
+        }
+        walk(root, 0)
+        return out
     }
 
     @Synchronized

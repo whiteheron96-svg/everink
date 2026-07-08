@@ -6,7 +6,9 @@ import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Color
+import android.graphics.RectF
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.text.InputType
@@ -61,6 +63,10 @@ class ViewerActivity : Activity() {
     private var currentStore: DocumentStore? = null
     private var currentName: String = ""
     private var currentRepaired: Boolean = false
+    private lateinit var topBar: LinearLayout
+    private var lastQuery: String = ""
+    // 페이지별 검색 일치(바깥=건, 안쪽=사각형들). PDF 포인트 좌표.
+    private val searchHits = HashMap<Int, List<List<RectF>>>()
 
     // 줌 확대 시 페이지를 몇 배 폭으로 렌더할지(1=기본, 2=고해상). 텍스트 선명도용.
     private var renderQuality = 1
@@ -116,6 +122,22 @@ class ViewerActivity : Activity() {
             onScaleSettled = { scale -> onZoomSettled(scale) }
         }
 
+        topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setBackgroundColor(Color.argb(0xAA, 0, 0, 0))
+            visibility = View.GONE
+            fun tool(label: String, onClick: () -> Unit) = TextView(this@ViewerActivity).apply {
+                text = label
+                textSize = 14f
+                setTextColor(Color.WHITE)
+                setPadding(36, 20, 36, 20)
+                setOnClickListener { onClick() }
+            }
+            addView(tool("검색") { promptSearch() })
+            addView(tool("이동") { promptGoto() })
+            addView(tool("목차") { showOutline() })
+        }
+
         statusView = TextView(this).apply {
             textSize = 12f
             setPadding(24, 12, 24, 12)
@@ -127,6 +149,28 @@ class ViewerActivity : Activity() {
         root.addView(pageList, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(emptyView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(statusView, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END))
+        root.addView(topBar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END))
+
+        // targetSdk 35 edge-to-edge: 도구바/상태 표시가 시스템 바와 겹치지 않게 인셋 적용
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val top: Int
+            val bottom: Int
+            if (Build.VERSION.SDK_INT >= 30) {
+                val sb = insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                top = sb.top
+                bottom = sb.bottom
+            } else {
+                @Suppress("DEPRECATION")
+                top = insets.systemWindowInsetTop
+                @Suppress("DEPRECATION")
+                bottom = insets.systemWindowInsetBottom
+            }
+            (topBar.layoutParams as FrameLayout.LayoutParams).topMargin = top
+            (statusView.layoutParams as FrameLayout.LayoutParams).bottomMargin = bottom
+            topBar.requestLayout()
+            statusView.requestLayout()
+            insets
+        }
         setContentView(root)
 
         refreshRecent()
@@ -241,9 +285,12 @@ class ViewerActivity : Activity() {
         pageCache.evictAll()
         pageList.resetZoom()
         pageList.adapter = PageAdapter(s)
+        searchHits.clear()
+        lastQuery = ""
         emptyView.visibility = View.GONE
         pageList.visibility = View.VISIBLE
         statusView.visibility = View.VISIBLE
+        topBar.visibility = View.VISIBLE
         statusView.text = statusText(s)
         if (currentRepaired) {
             toast("손상된 문서를 복구해 표시합니다. 내용이 불완전할 수 있습니다.")
@@ -289,6 +336,8 @@ class ViewerActivity : Activity() {
         session?.close()
         session = null
         currentStore = null
+        searchHits.clear()
+        if (::topBar.isInitialized) topBar.visibility = View.GONE
     }
 
     // ---- 주석 추가 ----
@@ -426,6 +475,127 @@ class ViewerActivity : Activity() {
         }.start()
     }
 
+    // ---- 검색 · 이동 · 목차 ----
+
+    private fun promptSearch() {
+        val s = session ?: return
+        val input = EditText(this).apply {
+            hint = "검색어"
+            setText(lastQuery)
+        }
+        AlertDialog.Builder(this)
+            .setTitle("문서 내 검색")
+            .setView(input)
+            .setPositiveButton("검색") { _, _ ->
+                val q = input.text.toString().trim()
+                if (q.isEmpty()) clearSearch() else runSearch(s, q)
+            }
+            .setNegativeButton("지우기") { _, _ -> clearSearch() }
+            .setNeutralButton("취소", null)
+            .show()
+    }
+
+    private fun runSearch(s: PdfSession, query: String) {
+        lastQuery = query
+        statusView.text = "검색 중…"
+        Thread {
+            val found = LinkedHashMap<Int, List<List<RectF>>>()
+            try {
+                val total = s.pageCount
+                for (p in 0 until total) {
+                    if (session !== s) return@Thread   // 문서가 바뀌면 중단
+                    val hits = s.searchPage(p, query)
+                    if (hits.isNotEmpty()) found[p] = hits
+                    if (p % 200 == 199) runOnUiThread { statusView.text = "검색 중… ${p + 1}/$total" }
+                }
+            } catch (t: Throwable) {
+                android.util.Log.w("EverInkViewer", "검색 실패", t)
+            }
+            runOnUiThread {
+                if (session !== s) return@runOnUiThread
+                searchHits.clear()
+                searchHits.putAll(found)
+                pageList.adapter?.notifyDataSetChanged()
+                val totalHits = found.values.sumOf { it.size }
+                statusView.text = statusText(s) +
+                    if (totalHits > 0) " · 🔍${totalHits}건" else ""
+                if (found.isEmpty()) {
+                    toast("\"$query\" 일치 없음")
+                } else {
+                    showSearchResults(found)
+                }
+            }
+        }.start()
+    }
+
+    private fun showSearchResults(found: Map<Int, List<List<RectF>>>) {
+        val pages = found.keys.toList()
+        val labels = pages.map { p -> "${p + 1}쪽 · ${found[p]!!.size}건" }
+            .let { if (it.size > 200) it.take(200) + "… (${it.size - 200}쪽 더 있음)" else it }
+            .toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("검색 결과 · ${found.values.sumOf { it.size }}건")
+            .setItems(labels) { _, which ->
+                if (which < pages.size) scrollToPage(pages[which])
+            }
+            .setNegativeButton("닫기", null)
+            .show()
+    }
+
+    private fun clearSearch() {
+        lastQuery = ""
+        searchHits.clear()
+        pageList.adapter?.notifyDataSetChanged()
+        session?.let { statusView.text = statusText(it) }
+    }
+
+    private fun promptGoto() {
+        val s = session ?: return
+        val input = EditText(this).apply {
+            hint = "1 ~ ${s.pageCount}"
+            inputType = InputType.TYPE_CLASS_NUMBER
+        }
+        AlertDialog.Builder(this)
+            .setTitle("쪽으로 이동")
+            .setView(input)
+            .setPositiveButton("이동") { _, _ ->
+                val n = input.text.toString().toIntOrNull() ?: return@setPositiveButton
+                scrollToPage((n - 1).coerceIn(0, s.pageCount - 1))
+            }
+            .setNegativeButton("취소", null)
+            .show()
+    }
+
+    private fun showOutline() {
+        val s = session ?: return
+        Thread {
+            val items = s.outline()
+            runOnUiThread {
+                if (session !== s) return@runOnUiThread
+                if (items.isEmpty()) {
+                    toast("이 문서에는 목차가 없습니다")
+                    return@runOnUiThread
+                }
+                val labels = items.map { o ->
+                    "  ".repeat(o.depth) + o.title +
+                        if (o.page >= 0) " · ${o.page + 1}쪽" else ""
+                }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle("목차")
+                    .setItems(labels) { _, which ->
+                        val page = items[which].page
+                        if (page >= 0) scrollToPage(page)
+                    }
+                    .setNegativeButton("닫기", null)
+                    .show()
+            }
+        }.start()
+    }
+
+    private fun scrollToPage(page: Int) {
+        (pageList.layoutManager as LinearLayoutManager).scrollToPositionWithOffset(page, 0)
+    }
+
     // ---- 최근 문서 ----
 
     private fun refreshRecent() {
@@ -510,7 +680,7 @@ class ViewerActivity : Activity() {
 
     // ---- 페이지 리스트 ----
 
-    private inner class PageHolder(val image: ImageView) : RecyclerView.ViewHolder(image) {
+    private inner class PageHolder(val image: PageImageView) : RecyclerView.ViewHolder(image) {
         var boundPage: Int = -1
         var lastTouchX: Float = 0f
         var lastTouchY: Float = 0f
@@ -518,12 +688,12 @@ class ViewerActivity : Activity() {
 
     private inner class PageAdapter(val s: PdfSession) : RecyclerView.Adapter<PageHolder>() {
 
-        private val aspectCache = HashMap<Int, Float>()
+        private val boundsCache = HashMap<Int, PdfSession.PageBounds>()
 
         override fun getItemCount(): Int = s.pageCount
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageHolder {
-            val iv = ImageView(parent.context).apply {
+            val iv = PageImageView(parent.context).apply {
                 adjustViewBounds = true
                 setBackgroundColor(Color.WHITE)
                 layoutParams = RecyclerView.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
@@ -549,6 +719,7 @@ class ViewerActivity : Activity() {
 
         override fun onBindViewHolder(holder: PageHolder, position: Int) {
             holder.boundPage = position
+            bindOverlay(holder, position)
             val cached = pageCache.get(position)
             if (cached != null && !cached.isRecycled) {
                 holder.image.setImageBitmap(cached)
@@ -557,15 +728,16 @@ class ViewerActivity : Activity() {
 
             // 자리표시자 높이: 페이지 비율 기준(스크롤 점프 방지)
             val width = if (pageList.width > 0) pageList.width else resources.displayMetrics.widthPixels
-            val ratio = aspectCache[position]
+            val known = boundsCache[position]
             holder.image.setImageBitmap(null)
-            holder.image.minimumHeight = ((ratio ?: 1.4142f) * width).toInt()
+            holder.image.minimumHeight =
+                (((known?.let { it.height / it.width }) ?: 1.4142f) * width).toInt()
 
             renderExecutor?.execute {
                 if (holder.boundPage != position || session !== s) return@execute
                 try {
-                    val r = aspectCache[position] ?: s.pageAspectRatio(position).also {
-                        aspectCache[position] = it
+                    val b = boundsCache[position] ?: s.pageBounds(position).also {
+                        boundsCache[position] = it
                     }
                     val bmp = pageCache.get(position)
                         ?: s.renderPage(position, width * renderQuality).also {
@@ -573,8 +745,9 @@ class ViewerActivity : Activity() {
                         }
                     runOnUiThread {
                         if (holder.boundPage == position && !bmp.isRecycled) {
-                            holder.image.minimumHeight = (r * width).toInt()
+                            holder.image.minimumHeight = (b.height / b.width * width).toInt()
                             holder.image.setImageBitmap(bmp)
+                            bindOverlay(holder, position)
                         }
                     }
                 } catch (t: Throwable) {
@@ -583,9 +756,21 @@ class ViewerActivity : Activity() {
             }
         }
 
+        /** 검색 하이라이트와 좌표 변환 정보를 뷰에 반영한다. */
+        private fun bindOverlay(holder: PageHolder, position: Int) {
+            val b = boundsCache[position]
+            if (b != null) {
+                holder.image.pageX0 = b.x0
+                holder.image.pageY0 = b.y0
+                holder.image.pageWidthPts = b.width
+            }
+            holder.image.highlights = searchHits[position]?.flatten() ?: emptyList()
+        }
+
         override fun onViewRecycled(holder: PageHolder) {
             holder.boundPage = -1
             holder.image.setImageBitmap(null)
+            holder.image.highlights = emptyList()
         }
     }
 

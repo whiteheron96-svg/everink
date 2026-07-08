@@ -237,10 +237,36 @@ Viewer v3 pass (same day, fifth session): render quality, save-pipeline IO, repa
   prefix-hash verification now compares temp against the renamed backup.
   Device autorun: all 5 checks pass with the rename pipeline.
 
+Viewer v4 pass (same day, sixth session): search and navigation.
+
+- In-document text search: `PdfSession.searchPage` wraps MuPDF `Page.search`
+  (quads → PDF-point rects). The viewer searches all pages on a background
+  thread with progress in the status bar, then shows a per-page result list
+  (`N쪽 · M건`); picking an entry jumps to the page. Matches are painted as
+  translucent yellow overlays by the new `PageImageView` (PDF-point rects
+  converted at draw time, so highlights track zoom/re-render). The status bar
+  shows the total hit count; searching with an empty query or "지우기" clears.
+- Go-to-page dialog and outline (책갈피) navigation: `PdfSession.outline()`
+  flattens the MuPDF outline tree with depth + resolved page numbers; documents
+  without an outline get a toast.
+- A slim top toolbar (검색/이동/목차) appears while a document is open.
+- Bug found and fixed while testing: targetSdk 35 forces edge-to-edge, so the
+  toolbar rendered under the system status bar (taps landed on system UI) and
+  the bottom status text overlapped the navigation bar. Window insets are now
+  applied to both overlays.
+
+Device validation (Galaxy S25, adb automation):
+
+- Searched `Supabase` in `window.pdf`: 2 hits (pages 1 and 9); result list
+  correct; picking `9쪽` jumped there and the match rendered with a yellow
+  highlight; status bar showed `🔍 2건`.
+- 이동 dialog jumped to page 3 exactly; 목차 on an outline-less document showed
+  the "이 문서에는 목차가 없습니다" toast. An outline-bearing PDF has not been
+  tested yet — worth one manual check with a real book/manual PDF.
+
 Immediate next actions:
 
-- Manual pinch-zoom check on device (double-tap path is verified end-to-end).
-- Text search inside documents; page thumbnails/outline navigation.
+- Manual pinch-zoom check; manual outline check with a TOC-bearing PDF.
 - Ink/freehand annotation type (the headline use case for a note-taking viewer).
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
   Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
