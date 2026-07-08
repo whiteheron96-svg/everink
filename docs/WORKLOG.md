@@ -324,10 +324,25 @@ Device validation (Galaxy S25, adb automation):
   `/sdcard/Download/EverInk_ink_check.pdf` for a manual external-viewer check
   (Polaris/Xodo), mirroring the earlier note round-trip test.
 
+Manual verification: the user confirmed ink renders correctly in an external
+viewer ("잘 되네") — colors/widths intact outside EverInk.
+
+GitHub publication (same day):
+
+- Pre-publish audit: no secrets/keys/tokens tracked; `local.properties` never
+  tracked. Two hygiene issues fixed BEFORE the first push, while history was
+  still local: a stray `.kotlin` build log was removed from all history, and
+  personal identifiers in this work log (macOS username paths, device serial)
+  were scrubbed across all commits via `git filter-branch` (original kept in
+  `refs/original`). Post-rewrite grep over full main history: 0 hits.
+- Published to https://github.com/whiteheron96-svg/everink — public, AGPL-3.0
+  recognized by GitHub, 10 commits of history intact.
+- The `app.everink` application id is now considered final.
+
 Immediate next actions:
 
-- Manual: open `Download/EverInk_ink_check.pdf` in Polaris Office/Xodo and
-  confirm both ink annotations render with correct colors and widths.
-- Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
-  Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
-  user's go-ahead since it publishes the project.
+- Release build setup: signing config, minify/proguard decisions, versioning;
+  then tag v0.1.0 and attach a release APK (needed for IzzyOnDroid).
+- IzzyOnDroid submission after the first tagged release.
+- Play listing prep (12 testers × 14 days) and F-Droid metadata later, per the
+  Phase 2 launch order.
