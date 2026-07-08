@@ -38,28 +38,30 @@ object AnnotationWriter {
         }
     }
 
+    /** 같은 페이지·색·굵기로 묶인 필기 획 묶음. Ink 주석 1개가 된다. */
+    data class InkGroup(
+        val pageIndex: Int,
+        val strokes: List<List<PointF>>,
+        val color: FloatArray,
+        val strokeWidth: Float,
+    )
+
     /**
-     * 필기(Ink) 주석을 페이지별로 추가하고 한 번의 증분 저장으로 기록한다.
-     *
-     * @param strokesByPage 페이지 인덱스 → 획 목록. 각 획은 PDF 포인트 좌표열.
+     * 필기(Ink) 주석들을 추가하고 한 번의 증분 저장으로 기록한다.
+     * 각 [InkGroup]이 표준 /Ink 주석 하나가 된다(주석 하나는 단일 색·굵기).
      */
-    fun addInk(
-        path: String,
-        strokesByPage: Map<Int, List<List<PointF>>>,
-        color: FloatArray = floatArrayOf(0.12f, 0.29f, 0.85f),
-        strokeWidth: Float = 2.5f,
-    ) {
-        require(strokesByPage.isNotEmpty()) { "strokesByPage is empty" }
+    fun addInk(path: String, groups: List<InkGroup>) {
+        require(groups.isNotEmpty()) { "groups is empty" }
         withPdf(path) { pdf ->
-            for ((pageIndex, strokes) in strokesByPage) {
-                if (strokes.isEmpty()) continue
-                val page = pdf.loadPage(pageIndex) as PDFPage
+            for (g in groups) {
+                if (g.strokes.isEmpty()) continue
+                val page = pdf.loadPage(g.pageIndex) as PDFPage
                 val annot = page.createAnnotation(PDFAnnotation.TYPE_INK)
-                annot.inkList = strokes.map { stroke ->
+                annot.inkList = g.strokes.map { stroke ->
                     stroke.map { Point(it.x, it.y) }.toTypedArray()
                 }.toTypedArray()
-                annot.setColor(color)
-                annot.borderWidth = strokeWidth
+                annot.setColor(g.color)
+                annot.borderWidth = g.strokeWidth
                 annot.update()                 // appearance stream = 타 뷰어 호환
             }
             pdf.save(path, "incremental")      // 기존 바이트 보존

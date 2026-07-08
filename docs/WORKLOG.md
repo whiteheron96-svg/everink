@@ -300,10 +300,34 @@ Device validation (Galaxy S25, adb automation):
 - Force-stopped and relaunched via the recent list: ink still renders
   (3,150 blue stroke pixels detected on the reopened page).
 
+Viewer v6 pass (same day, eighth session): ink polish.
+
+- Pen picker (펜 button in ink mode): 4 colors (파랑/빨강/초록/검정) × 3 widths
+  (가늘게 1.5pt / 보통 2.5pt / 굵게 4.5pt), applied per stroke; the status bar
+  shows the current pen.
+- Undo (↩ button): removes the most recent stroke (draw order preserved across
+  pages); repeated taps keep peeling strokes back.
+- Save now groups strokes by (page, color, width) — each group becomes one
+  standard /Ink annotation, since a PDF Ink annotation carries a single color
+  and width — still one incremental save for the whole session.
+- `PageImageView` previews carry per-stroke color/width, so the preview matches
+  the saved rendering exactly.
+
+Device validation (Galaxy S25, adb automation):
+
+- Drew stroke 1 with the default pen, switched to 빨강+굵게 via the picker,
+  drew strokes 2 and 3, pressed undo — stroke 3 disappeared from the preview.
+- Saved; pulled document of record shows the new annotations exactly as
+  expected: one /Ink (blue, 2.5pt) and one /Ink (red, 4.5pt); the undone
+  stroke is absent. Colors/widths verified from /C and /BS /W entries.
+- Exported the annotated document of record to
+  `/sdcard/Download/EverInk_ink_check.pdf` for a manual external-viewer check
+  (Polaris/Xodo), mirroring the earlier note round-trip test.
+
 Immediate next actions:
 
-- Ink polish: color/width picker, eraser/undo before save, S Pen pressure later.
-- External-viewer check of ink (Polaris/Xodo), like the earlier note round-trip.
+- Manual: open `Download/EverInk_ink_check.pdf` in Polaris Office/Xodo and
+  confirm both ink annotations render with correct colors and widths.
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
   Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
   user's go-ahead since it publishes the project.

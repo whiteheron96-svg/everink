@@ -29,8 +29,11 @@ class PageImageView(context: Context) : ImageView(context) {
             invalidate()
         }
 
-    /** 저장 전 미리보기용 필기 획(PDF 포인트 좌표). */
-    var inkStrokes: List<List<PointF>> = emptyList()
+    /** 저장 전 미리보기 획: 좌표(PDF 포인트) + 색 + 굵기(포인트). */
+    data class InkPreview(val points: List<PointF>, val color: Int, val widthPts: Float)
+
+    /** 저장 전 미리보기용 필기 획. */
+    var inkStrokes: List<InkPreview> = emptyList()
         set(value) {
             field = value
             invalidate()
@@ -42,7 +45,6 @@ class PageImageView(context: Context) : ImageView(context) {
     }
 
     private val inkPaint = Paint().apply {
-        color = Color.rgb(31, 74, 217)
         style = Paint.Style.STROKE
         strokeCap = Paint.Cap.ROUND
         strokeJoin = Paint.Join.ROUND
@@ -64,20 +66,20 @@ class PageImageView(context: Context) : ImageView(context) {
                 paint,
             )
         }
-        if (inkStrokes.isNotEmpty()) {
-            inkPaint.strokeWidth = 2.5f * s
-            for (stroke in inkStrokes) {
-                if (stroke.isEmpty()) continue
-                inkPath.reset()
-                inkPath.moveTo((stroke[0].x - pageX0) * s, (stroke[0].y - pageY0) * s)
-                for (i in 1 until stroke.size) {
-                    inkPath.lineTo((stroke[i].x - pageX0) * s, (stroke[i].y - pageY0) * s)
-                }
-                if (stroke.size == 1) {
-                    inkPath.lineTo((stroke[0].x - pageX0) * s + 1f, (stroke[0].y - pageY0) * s)
-                }
-                canvas.drawPath(inkPath, inkPaint)
+        for (stroke in inkStrokes) {
+            val pts = stroke.points
+            if (pts.isEmpty()) continue
+            inkPaint.color = stroke.color
+            inkPaint.strokeWidth = stroke.widthPts * s
+            inkPath.reset()
+            inkPath.moveTo((pts[0].x - pageX0) * s, (pts[0].y - pageY0) * s)
+            for (i in 1 until pts.size) {
+                inkPath.lineTo((pts[i].x - pageX0) * s, (pts[i].y - pageY0) * s)
             }
+            if (pts.size == 1) {
+                inkPath.lineTo((pts[0].x - pageX0) * s + 1f, (pts[0].y - pageY0) * s)
+            }
+            canvas.drawPath(inkPath, inkPaint)
         }
     }
 }

@@ -71,6 +71,8 @@ class ViewerActivity : Activity() {
     private lateinit var btnInk: TextView
     private lateinit var btnInkSave: TextView
     private lateinit var btnInkCancel: TextView
+    private lateinit var btnInkPen: TextView
+    private lateinit var btnInkUndo: TextView
     private var lastQuery: String = ""
     // 페이지별 검색 일치(바깥=건, 안쪽=사각형들). PDF 포인트 좌표.
     private val searchHits = HashMap<Int, List<List<RectF>>>()
@@ -80,10 +82,28 @@ class ViewerActivity : Activity() {
 
     private val docsRoot: File by lazy { File(filesDir, "documents") }
 
-    // 필기 모드 상태: 페이지별 확정 획 + 진행 중 획 (좌표는 PDF 포인트)
+    // 필기 모드 상태: 확정 획(그린 순서 유지=undo용) + 진행 중 획 (좌표는 PDF 포인트)
+    private data class InkStrokeData(
+        val page: Int,
+        val points: List<PointF>,
+        val colorIdx: Int,
+        val widthPts: Float,
+    )
+
     private var inkMode = false
-    private val pendingInk = HashMap<Int, MutableList<List<PointF>>>()
+    private val inkDone = mutableListOf<InkStrokeData>()
     private var activeStroke: MutableList<PointF>? = null
+
+    // 펜 설정: (이름, 미리보기 색, PDF 색)
+    private val penColors = listOf(
+        Triple("파랑", Color.rgb(31, 74, 217), floatArrayOf(0.12f, 0.29f, 0.85f)),
+        Triple("빨강", Color.rgb(219, 38, 38), floatArrayOf(0.86f, 0.15f, 0.15f)),
+        Triple("초록", Color.rgb(26, 153, 77), floatArrayOf(0.10f, 0.60f, 0.30f)),
+        Triple("검정", Color.rgb(20, 20, 20), floatArrayOf(0.08f, 0.08f, 0.08f)),
+    )
+    private val penWidths = listOf("가늘게" to 1.5f, "보통" to 2.5f, "굵게" to 4.5f)
+    private var penColorIdx = 0
+    private var penWidthIdx = 1
     private var activePage = -1
     private var activeChildLeft = 0
     private var activeChildTop = 0
@@ -158,14 +178,20 @@ class ViewerActivity : Activity() {
             btnGoto = tool("이동") { promptGoto() }
             btnOutline = tool("목차") { showOutline() }
             btnInk = tool("필기") { setInkMode(true) }
+            btnInkPen = tool("펜") { promptPen() }
+            btnInkUndo = tool("↩") { undoInkStroke() }
             btnInkSave = tool("저장") { saveInk() }
             btnInkCancel = tool("취소") { setInkMode(false) }
+            btnInkPen.visibility = View.GONE
+            btnInkUndo.visibility = View.GONE
             btnInkSave.visibility = View.GONE
             btnInkCancel.visibility = View.GONE
             addView(btnSearch)
             addView(btnGoto)
             addView(btnOutline)
             addView(btnInk)
+            addView(btnInkPen)
+            addView(btnInkUndo)
             addView(btnInkSave)
             addView(btnInkCancel)
         }
@@ -371,7 +397,7 @@ class ViewerActivity : Activity() {
         session = null
         currentStore = null
         searchHits.clear()
-        pendingInk.clear()
+        inkDone.clear()
         activeStroke = null
         activePage = -1
         if (::topBar.isInitialized) topBar.visibility = View.GONE
@@ -522,19 +548,55 @@ class ViewerActivity : Activity() {
         btnGoto.visibility = if (on) View.GONE else View.VISIBLE
         btnOutline.visibility = if (on) View.GONE else View.VISIBLE
         btnInk.visibility = if (on) View.GONE else View.VISIBLE
+        btnInkPen.visibility = if (on) View.VISIBLE else View.GONE
+        btnInkUndo.visibility = if (on) View.VISIBLE else View.GONE
         btnInkSave.visibility = if (on) View.VISIBLE else View.GONE
         btnInkCancel.visibility = if (on) View.VISIBLE else View.GONE
         if (!on) {
-            pendingInk.clear()
+            inkDone.clear()
             activeStroke = null
             activePage = -1
             refreshInkOverlays()
         }
         if (on) {
-            statusView.text = "필기 모드 · 손가락으로 긋고 [저장]"
+            statusView.text = inkStatusText()
         } else {
             session?.let { statusView.text = statusText(it) }
         }
+    }
+
+    private fun inkStatusText(): String =
+        "필기 모드 · ${penColors[penColorIdx].first}·${penWidths[penWidthIdx].first}"
+
+    private fun promptPen() {
+        val colorLabels = penColors.map { it.first }.toTypedArray()
+        AlertDialog.Builder(this)
+            .setTitle("펜 색")
+            .setSingleChoiceItems(colorLabels, penColorIdx) { d, which ->
+                penColorIdx = which
+                d.dismiss()
+                val widthLabels = penWidths.map { it.first }.toTypedArray()
+                AlertDialog.Builder(this)
+                    .setTitle("펜 굵기")
+                    .setSingleChoiceItems(widthLabels, penWidthIdx) { d2, w ->
+                        penWidthIdx = w
+                        d2.dismiss()
+                        statusView.text = inkStatusText()
+                    }
+                    .show()
+            }
+            .show()
+    }
+
+    private fun undoInkStroke() {
+        if (activeStroke != null) {
+            activeStroke = null
+        } else if (inkDone.isNotEmpty()) {
+            inkDone.removeAt(inkDone.size - 1)
+        } else {
+            return
+        }
+        refreshInkOverlays()
     }
 
     private fun handleInkTouch(ev: MotionEvent) {
@@ -560,7 +622,8 @@ class ViewerActivity : Activity() {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                 val stroke = activeStroke
                 if (stroke != null && stroke.size >= 2) {
-                    pendingInk.getOrPut(activePage) { mutableListOf() }.add(stroke)
+                    inkDone += InkStrokeData(activePage, stroke.toList(),
+                        penColorIdx, penWidths[penWidthIdx].second)
                 }
                 activeStroke = null
                 refreshInkOverlays()
@@ -583,15 +646,28 @@ class ViewerActivity : Activity() {
         }
     }
 
-    private fun inkStrokesFor(page: Int): List<List<PointF>> {
-        val done = pendingInk[page].orEmpty()
+    private fun inkStrokesFor(page: Int): List<PageImageView.InkPreview> {
+        val done = inkDone.filter { it.page == page }.map {
+            PageImageView.InkPreview(it.points, penColors[it.colorIdx].second, it.widthPts)
+        }
         val active = activeStroke
-        return if (active != null && page == activePage) done + listOf(active.toList()) else done
+        return if (active != null && page == activePage) {
+            done + PageImageView.InkPreview(active.toList(),
+                penColors[penColorIdx].second, penWidths[penWidthIdx].second)
+        } else done
     }
 
     private fun saveInk() {
         val store = currentStore ?: return
-        val groups = pendingInk.filterValues { it.isNotEmpty() }.mapValues { it.value.toList() }
+        val groups = inkDone.groupBy { Triple(it.page, it.colorIdx, it.widthPts) }
+            .map { (key, strokes) ->
+                AnnotationWriter.InkGroup(
+                    pageIndex = key.first,
+                    strokes = strokes.map { it.points },
+                    color = penColors[key.second].third,
+                    strokeWidth = key.third,
+                )
+            }
         if (groups.isEmpty()) {
             toast("저장할 필기가 없습니다")
             return

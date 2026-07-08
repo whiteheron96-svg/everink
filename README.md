@@ -39,7 +39,8 @@ As of 2026-07-08:
   go-to-page and outline (bookmark) navigation from a slim top toolbar.
 - Ink mode: freehand strokes saved as standard PDF Ink annotations (appearance
   stream + incremental save) through the same backup pipeline; live preview
-  matches the saved rendering.
+  matches the saved rendering. Pen picker (4 colors × 3 widths, per stroke) and
+  undo before save; strokes group into one /Ink per (page, color, width).
 - A recent-documents list on the start screen reopens existing documents of record;
   long-press an entry to delete its document of record and backups.
 - `LICENSE` is AGPL-3.0.
@@ -116,6 +117,6 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Ink polish: color/width picker, undo before save; external-viewer ink check.
+1. Manual: confirm `Download/EverInk_ink_check.pdf` ink rendering in Polaris/Xodo.
 2. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.
