@@ -339,10 +339,32 @@ GitHub publication (same day):
   recognized by GitHub, 10 commits of history intact.
 - The `app.everink` application id is now considered final.
 
+Release v0.1.0 (same day):
+
+- Generated a 4096-bit RSA release keystore (30-year validity) at
+  `~/.everink-release/` with a random password; keystore + properties backed up
+  to the external volume (`2TB white/everink-release-keys-backup`). Nothing
+  signing-related is in the repo; Gradle reads
+  `~/.everink-release/keystore.properties` when present.
+- Version set to 0.1.0 (versionCode 1). Minify stays off for 0.1.0 to avoid
+  proguard risk at the MuPDF JNI boundary.
+- Bug found during release smoke testing and fixed: ACTION_VIEW delivered to a
+  running instance was silently ignored (no onNewIntent handler). Now the
+  running viewer switches documents.
+- Release smoke on device (signed build): cold ACTION_VIEW open, warm re-entry
+  document switch, page rendering, note save with visible yellow annotation —
+  all pass, no crashes. Note: release builds are not debuggable, so `run-as`
+  file inspection no longer works; verification is screenshot-based. One
+  test-only quirk: if adb creates the app-external dir before the app first
+  touches it, file reads fail — real users (SAF/content URIs) are unaffected.
+- Published: https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.0
+  with `EverInk-0.1.0.apk` attached (45.6MB, all ABIs), marked pre-release.
+
+Beta testing can start now: send testers the release link.
+
 Immediate next actions:
 
-- Release build setup: signing config, minify/proguard decisions, versioning;
-  then tag v0.1.0 and attach a release APK (needed for IzzyOnDroid).
-- IzzyOnDroid submission after the first tagged release.
-- Play listing prep (12 testers × 14 days) and F-Droid metadata later, per the
-  Phase 2 launch order.
+- IzzyOnDroid submission (release with APK now exists).
+- Recruit beta testers; enroll them in Play closed testing once the developer
+  account is ready (the 12 testers × 14 days clock starts there).
+- Consider ABI splits or app bundle later to cut the 45MB APK size.
