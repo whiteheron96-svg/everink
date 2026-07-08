@@ -80,17 +80,17 @@ object StorageSpike {
             var atomicOk = true
             var lastDetail = ""
             for (s in 0 until sessions) {
-                // 2a) 백업 (쓰기 전 스냅샷, 최근 3세대 유지)
-                store.createBackup(tag = "$s")
+                // 2a) 백업 = 문서 rename (IO 0, 이 시점부터 commit까지 문서 경로는 빔)
+                val backup = store.renameToBackup(tag = "$s")
 
-                // 2b) temp에 사본 → 주석 추가(증분 저장)
-                val temp = store.stageCopy()
+                // 2b) temp = 백업 복사 → 주석 추가(증분 저장)
+                val temp = store.stageFrom(backup)
                 val beforeSize = temp.length()
                 AnnotationWriter.addSquare(temp.absolutePath, pageIndex = 0, contents = "EverInk 세션 $s")
 
                 // 2c) 검증: 증분 저장은 앞부분(기존 바이트) 무변경 + 파일 증가
                 val grew = temp.length() >= beforeSize
-                val prefixUnchanged = prefixHash(temp, beforeSize) == prefixHash(target, beforeSize)
+                val prefixUnchanged = prefixHash(temp, beforeSize) == prefixHash(backup, beforeSize)
                 if (!grew || !prefixUnchanged) {
                     sessionOk = false
                     lastDetail = "세션 $s: grew=$grew prefixUnchanged=$prefixUnchanged"

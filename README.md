@@ -30,7 +30,11 @@ As of 2026-07-08:
   backup → incremental → atomic-replace pipeline. Annotations survive app restarts.
 - Tapping a note shows its contents with edit/delete; both actions go through the
   same backup pipeline, so previous states stay recoverable.
-- Pinch zoom (1x–4x) and double-tap zoom toggle via `ZoomableRecyclerView`.
+- Pinch zoom (1x–4x) and double-tap zoom toggle via `ZoomableRecyclerView`; pages
+  re-render at 2x width while zoomed for sharp text.
+- Backups are created by atomic rename (zero IO), so each annotation edit costs a
+  single full-file copy; interrupted edits self-recover from the newest backup.
+- Documents MuPDF had to repair are flagged in the status bar (`⚠︎복구됨`).
 - A recent-documents list on the start screen reopens existing documents of record;
   long-press an entry to delete its document of record and backups.
 - `LICENSE` is AGPL-3.0.
@@ -107,8 +111,8 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Re-render pages at higher resolution while zoomed (currently base-width bitmaps).
-2. Avoid full-file staging copies per annotation on very large documents.
-3. Notice for auto-repaired documents; rename in the recent list.
+1. Manual pinch-zoom check on a device (double-tap zoom is verified).
+2. Text search; page thumbnails/outline navigation.
+3. Ink/freehand annotations.
 4. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.

@@ -32,6 +32,9 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
     /** 단일탭 콜백(콘텐츠 좌표계 = 줌 이전 좌표). */
     var onSingleTap: ((x: Float, y: Float) -> Unit)? = null
 
+    /** 배율이 확정된 시점(핀치 종료·더블탭) 콜백. 고해상 재렌더 트리거용. */
+    var onScaleSettled: ((scale: Float) -> Unit)? = null
+
     private var scaleFactorZ = 1f
     private var tranX = 0f
     private var tranY = 0f
@@ -57,6 +60,10 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
                     invalidate()
                 }
                 return true
+            }
+
+            override fun onScaleEnd(detector: ScaleGestureDetector) {
+                onScaleSettled?.invoke(scaleFactorZ)
             }
         })
 
@@ -89,6 +96,7 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
                     clampPan()
                 }
                 invalidate()
+                onScaleSettled?.invoke(scaleFactorZ)
                 return true
             }
 
@@ -97,6 +105,14 @@ class ZoomableRecyclerView(context: Context) : RecyclerView(context) {
                 return false
             }
         })
+
+    /** 새 문서를 열 때 줌·팬 상태를 초기화한다. */
+    fun resetZoom() {
+        scaleFactorZ = 1f
+        tranX = 0f
+        tranY = 0f
+        invalidate()
+    }
 
     private fun clampPan() {
         val maxTran = (scaleFactorZ - 1f)

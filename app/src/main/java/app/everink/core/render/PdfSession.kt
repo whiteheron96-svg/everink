@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.artifex.mupdf.fitz.Cookie
 import com.artifex.mupdf.fitz.Document
 import com.artifex.mupdf.fitz.Matrix
+import com.artifex.mupdf.fitz.PDFDocument
 import com.artifex.mupdf.fitz.android.AndroidDrawDevice
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -37,6 +38,10 @@ class PdfSession private constructor(
     /** @return 인증 성공 여부 */
     @Synchronized
     fun authenticate(password: String): Boolean = doc.authenticatePassword(password)
+
+    /** 손상 문서를 MuPDF가 복구해서 열었는지(내용 불완전 가능 안내용). */
+    @Synchronized
+    fun wasRepaired(): Boolean = (doc as? PDFDocument)?.wasRepaired() ?: false
 
     /** 페이지의 세로/가로 비율(레이아웃 자리표시자 높이 계산용). */
     @Synchronized

@@ -8,12 +8,19 @@ import java.nio.file.StandardCopyOption
 /**
  * 기록 문서(document of record) 저장 파이프라인.
  *
- * "주석이 절대 안 사라진다" 원칙의 프로덕션 구현부:
- *  - 매 쓰기 전 세대 백업(최근 [keepGenerations]개 유지)
- *  - temp 사본에서 편집(증분 저장) 후 같은 디렉토리 내 원자적 교체
- *  - 저장 중 크래시가 나도 기존 기록 문서는 항상 온전
+ * "주석이 절대 안 사라진다" 원칙의 프로덕션 구현부. 편집 한 번의 흐름:
  *
- * 스파이크(StorageSpike)와 뷰어가 동일한 프리미티브를 사용한다.
+ *  1. 백업 = 문서를 backups/로 rename (IO 0, 원자적)
+ *  2. temp = 백업을 복사 (편집당 전체 복사는 이 1회뿐)
+ *  3. temp에 증분 저장으로 편집
+ *  4. temp를 문서 경로로 원자적 rename
+ *
+ * 어느 시점에 크래시가 나도 수정 전 상태가 백업 또는 문서 경로에 온전히
+ * 존재한다. 문서 경로가 비어 있는 창(1~4 사이)은 다음 열기 때
+ * [recoverIfNeeded]가 최신 백업을 승격시켜 메운다.
+ *
+ * 참고: 백업을 하드링크로 만드는 방안은 Android SELinux가 앱 데이터
+ * 디렉토리의 link 생성을 차단해 실기기(Galaxy S25)에서 동작하지 않았다.
  */
 class DocumentStore(
     private val workDir: File,
@@ -25,9 +32,23 @@ class DocumentStore(
 
     val backupsDir: File = File(workDir, "backups")
 
+    private val temp: File = File(workDir, "doc.tmp")
+
     init {
         workDir.mkdirs()
         backupsDir.mkdirs()
+        recoverIfNeeded()
+    }
+
+    /**
+     * 편집 도중 크래시로 문서 경로가 비어 있으면 최신 백업을 승격한다.
+     * 백업조차 없으면(새 스토어) 아무것도 하지 않는다.
+     */
+    fun recoverIfNeeded() {
+        if (document.exists()) return
+        val newest = backupsDir.listFiles()?.maxByOrNull { it.lastModified() } ?: return
+        Files.move(newest.toPath(), document.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        temp.delete()   // 중단된 편집의 잔재 정리
     }
 
     /** 원본 PDF를 기록 문서로 복사한다(원본은 변경하지 않음). */
@@ -37,28 +58,29 @@ class DocumentStore(
         return document
     }
 
-    /** 쓰기 전 스냅샷 백업을 만들고 오래된 세대를 정리한다. */
-    fun createBackup(tag: String = ""): File {
+    /**
+     * 백업 = 문서를 backups/로 원자적 rename. IO가 없어 파일 크기와 무관하게
+     * 즉시 끝난다. 이 호출 후 [commit] 또는 [restore]까지 문서 경로는 비어 있다.
+     */
+    fun renameToBackup(tag: String = ""): File {
         check(document.exists()) { "document of record does not exist" }
         val backup = File(backupsDir, "gen_${System.nanoTime()}${if (tag.isEmpty()) "" else "_$tag"}.pdf")
-        copy(document, backup)
-        trimBackups()
+        Files.move(document.toPath(), backup.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        trimBackups()   // 가장 오래된 세대만 정리(방금 만든 최신 세대는 안전)
         return backup
     }
 
-    /** 편집용 temp 사본을 만든다. 편집 후 [commit]으로 반영한다. */
-    fun stageCopy(): File {
-        check(document.exists()) { "document of record does not exist" }
-        val temp = File(workDir, "doc.tmp")
+    /** [source](보통 방금 만든 백업)를 편집용 temp로 복사한다. */
+    fun stageFrom(source: File): File {
         if (temp.exists()) temp.delete()
-        copy(document, temp)
+        copy(source, temp)
         return temp
     }
 
     /** temp를 기록 문서로 원자적 교체한다. */
-    fun commit(temp: File): CommitResult = try {
+    fun commit(staged: File): CommitResult = try {
         Files.move(
-            temp.toPath(),
+            staged.toPath(),
             document.toPath(),
             StandardCopyOption.ATOMIC_MOVE,
             StandardCopyOption.REPLACE_EXISTING,
@@ -70,21 +92,34 @@ class DocumentStore(
         CommitResult(ok = false, atomic = false, detail = "${e.javaClass.simpleName}: ${e.message}")
     }
 
+    /** 편집 실패 시 백업을 문서 경로로 되돌린다(편집 전과 완전히 동일한 상태). */
+    fun restore(backup: File) {
+        temp.delete()
+        if (!document.exists() && backup.exists()) {
+            Files.move(backup.toPath(), document.toPath(), StandardCopyOption.ATOMIC_MOVE)
+        }
+    }
+
     /**
-     * 편의 진입점: 백업 → temp 사본 → [edit] (temp 경로에 증분 저장) → 원자적 교체.
-     * [edit]가 예외를 던지면 기록 문서는 변경되지 않는다.
+     * 편의 진입점: rename 백업 → temp 복사 → [edit](temp 경로에 증분 저장) →
+     * 원자적 교체 → 오래된 백업 정리. [edit]가 실패하면 문서는 편집 전
+     * 상태로 복원된다.
      */
     fun saveEdit(edit: (tempPath: String) -> Unit): CommitResult {
-        createBackup()
-        val temp = stageCopy()
-        try {
-            edit(temp.absolutePath)
+        recoverIfNeeded()
+        val backup = renameToBackup()
+        val staged = try {
+            val t = stageFrom(backup)
+            edit(t.absolutePath)
+            t
         } catch (t: Throwable) {
-            temp.delete()
+            restore(backup)
             return CommitResult(ok = false, atomic = false,
                 detail = "편집 실패: ${t.javaClass.simpleName}: ${t.message}")
         }
-        return commit(temp)
+        val result = commit(staged)
+        if (!result.ok) restore(backup)
+        return result
     }
 
     fun backupCount(): Int = backupsDir.listFiles()?.size ?: 0

@@ -210,12 +210,38 @@ Device validation (Galaxy S25, adb automation):
 - Long-pressed the stale `garbage.pdf` recent entry → deleted; after the bug fix,
   reopening `garbage.pdf` fails with a toast and leaves no recent entry.
 
+Viewer v3 pass (same day, fifth session): render quality, save-pipeline IO, repair notice.
+
+- High-resolution re-render while zoomed: `ZoomableRecyclerView.onScaleSettled`
+  fires on pinch end and double-tap; the viewer switches render quality between
+  1x and 2x page width (threshold: scale > 1.2), evicts the page cache (resized
+  to 96MB at 2x), and re-renders. Measured text sharpness at 2x zoom improved
+  5.4x by Laplacian variance versus the previous upscale-only build, and is
+  clearly crisper in side-by-side screenshots.
+- Save-pipeline IO halved via rename-based staging in `DocumentStore`:
+  backup = atomic rename of the document (zero IO regardless of file size),
+  temp = one full copy from the backup, edit incrementally, commit = atomic
+  rename back. Previously each edit cost two full copies (backup copy + stage
+  copy). The document path is briefly empty between backup and commit, so
+  `recoverIfNeeded()` (run at store init and before edits) promotes the newest
+  backup if a crash interrupted an edit, and clears stale temp files.
+  - A hardlink-based backup (`Files.createLink`) was tried first and failed on
+    device: Android SELinux blocks link creation in app data directories. The
+    inode check proved the fallback copy ran; the approach was replaced by
+    rename staging, which the same inode check proved correct
+    (pre-edit document inode 1224505 became exactly the newest backup's inode).
+- Repaired-document notice: `PdfSession.wasRepaired()` (MuPDF `PDFDocument
+  .wasRepaired`) → status bar shows `⚠︎복구됨` and a one-time toast warns that
+  content may be incomplete. Verified on device with `corrupt.pdf`.
+- `StorageSpike` updated to the new primitives (`renameToBackup`/`stageFrom`);
+  prefix-hash verification now compares temp against the renamed backup.
+  Device autorun: all 5 checks pass with the rename pipeline.
+
 Immediate next actions:
 
-- Manual pinch-zoom check on device (double-tap path is verified).
-- Re-render pages at higher resolution when zoomed for sharp text.
-- Avoid full-file staging copies per annotation edit on very large documents.
-- Notice for auto-repaired (corrupt-but-openable) documents.
+- Manual pinch-zoom check on device (double-tap path is verified end-to-end).
+- Text search inside documents; page thumbnails/outline navigation.
+- Ink/freehand annotation type (the headline use case for a note-taking viewer).
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
   Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
   user's go-ahead since it publishes the project.

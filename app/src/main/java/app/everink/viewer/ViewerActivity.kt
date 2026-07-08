@@ -60,11 +60,15 @@ class ViewerActivity : Activity() {
     private var renderExecutor: ExecutorService? = null
     private var currentStore: DocumentStore? = null
     private var currentName: String = ""
+    private var currentRepaired: Boolean = false
+
+    // 줌 확대 시 페이지를 몇 배 폭으로 렌더할지(1=기본, 2=고해상). 텍스트 선명도용.
+    private var renderQuality = 1
 
     private val docsRoot: File by lazy { File(filesDir, "documents") }
 
-    // 페이지 비트맵 캐시(약 48MB). 축출분은 GC(NativeAllocationRegistry)가 회수.
-    private val pageCache = object : LruCache<Int, Bitmap>(48 * 1024 * 1024) {
+    // 페이지 비트맵 캐시(기본 48MB, 고해상 렌더 시 2배로 확장). 축출분은 GC가 회수.
+    private val pageCache = object : LruCache<Int, Bitmap>(CACHE_BYTES) {
         override fun sizeOf(key: Int, value: Bitmap) = value.byteCount
     }
 
@@ -109,6 +113,7 @@ class ViewerActivity : Activity() {
             setBackgroundColor(Color.rgb(0x22, 0x22, 0x22))
             visibility = View.GONE
             onSingleTap = { x, y -> handlePageTap(x, y) }
+            onScaleSettled = { scale -> onZoomSettled(scale) }
         }
 
         statusView = TextView(this).apply {
@@ -230,12 +235,34 @@ class ViewerActivity : Activity() {
     private fun showDocument(s: PdfSession) {
         session = s
         renderExecutor = Executors.newSingleThreadExecutor()
+        currentRepaired = s.wasRepaired()
+        renderQuality = 1
+        pageCache.resize(CACHE_BYTES)
         pageCache.evictAll()
+        pageList.resetZoom()
         pageList.adapter = PageAdapter(s)
         emptyView.visibility = View.GONE
         pageList.visibility = View.VISIBLE
         statusView.visibility = View.VISIBLE
-        statusView.text = "$currentName · ${s.pageCount}p · 길게=메모 · 메모 탭=보기"
+        statusView.text = statusText(s)
+        if (currentRepaired) {
+            toast("손상된 문서를 복구해 표시합니다. 내용이 불완전할 수 있습니다.")
+        }
+    }
+
+    private fun statusText(s: PdfSession): String =
+        "$currentName · ${s.pageCount}p · 길게=메모 · 메모 탭=보기" +
+            if (currentRepaired) " · ⚠︎복구됨" else ""
+
+    /** 배율 확정 시 렌더 품질(1x/2x 폭)을 전환하고 필요하면 재렌더한다. */
+    private fun onZoomSettled(scale: Float) {
+        val q = if (scale > 1.2f) 2 else 1
+        if (q != renderQuality) {
+            renderQuality = q
+            pageCache.resize(CACHE_BYTES * q)
+            pageCache.evictAll()
+            pageList.adapter?.notifyDataSetChanged()
+        }
     }
 
     /** 주석 저장 후 새 기록 문서로 세션을 다시 연다(스크롤 위치 유지). */
@@ -251,7 +278,7 @@ class ViewerActivity : Activity() {
         pageCache.evictAll()
         pageList.adapter = PageAdapter(s)
         if (pos > 0) lm.scrollToPosition(pos)
-        statusView.text = "$currentName · ${s.pageCount}p · 길게=메모 · 메모 탭=보기"
+        statusView.text = statusText(s)
     }
 
     private fun closeDocument() {
@@ -300,7 +327,7 @@ class ViewerActivity : Activity() {
                         refreshDocument()
                         toast("메모 저장됨 · 백업 ${store.backupCount()}세대 보관")
                     } else {
-                        statusView.text = "$currentName · ${s.pageCount}p"
+                        statusView.text = statusText(s)
                         toast("저장 실패: ${result.detail}")
                     }
                 }
@@ -388,7 +415,7 @@ class ViewerActivity : Activity() {
                         refreshDocument()
                         toast("메모 $label 완료 · 백업 ${store.backupCount()}세대 보관")
                     } else {
-                        session?.let { statusView.text = "$currentName · ${it.pageCount}p" }
+                        session?.let { statusView.text = statusText(it) }
                         toast("$label 실패: ${result.detail}")
                     }
                 }
@@ -540,9 +567,10 @@ class ViewerActivity : Activity() {
                     val r = aspectCache[position] ?: s.pageAspectRatio(position).also {
                         aspectCache[position] = it
                     }
-                    val bmp = pageCache.get(position) ?: s.renderPage(position, width).also {
-                        pageCache.put(position, it)
-                    }
+                    val bmp = pageCache.get(position)
+                        ?: s.renderPage(position, width * renderQuality).also {
+                            pageCache.put(position, it)
+                        }
                     runOnUiThread {
                         if (holder.boundPage == position && !bmp.isRecycled) {
                             holder.image.minimumHeight = (r * width).toInt()
@@ -559,5 +587,9 @@ class ViewerActivity : Activity() {
             holder.boundPage = -1
             holder.image.setImageBitmap(null)
         }
+    }
+
+    companion object {
+        private const val CACHE_BYTES = 48 * 1024 * 1024
     }
 }
