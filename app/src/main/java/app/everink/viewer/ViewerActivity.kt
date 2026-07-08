@@ -239,6 +239,14 @@ class ViewerActivity : Activity() {
         }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        // 앱이 이미 떠 있는 상태에서 외부 "PDF 열기"로 재진입한 경우
+        if (intent.action == Intent.ACTION_VIEW) {
+            intent.data?.let { openFromUri(it) }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
         closeDocument()
