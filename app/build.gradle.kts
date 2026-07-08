@@ -21,8 +21,8 @@ android {
         applicationId = "app.everink"
         minSdk = 26          // PRD 오픈퀘스천 #3: API 26 채택(SAF 성숙도 기준)
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.1.1"
     }
 
     signingConfigs {
