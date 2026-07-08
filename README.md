@@ -113,7 +113,6 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Manual checks: pinch zoom, and outline navigation with a TOC-bearing PDF.
-2. Ink/freehand annotations.
-3. Decide the final package id; set up the GitHub repository and follow the
+1. Ink/freehand annotations.
+2. Decide the final package id; set up the GitHub repository and follow the
    GitHub → IzzyOnDroid → Play → F-Droid release order.

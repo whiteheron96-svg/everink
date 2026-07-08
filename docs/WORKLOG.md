@@ -264,9 +264,19 @@ Device validation (Galaxy S25, adb automation):
   the "이 문서에는 목차가 없습니다" toast. An outline-bearing PDF has not been
   tested yet — worth one manual check with a real book/manual PDF.
 
+Manual verification follow-up (same day):
+
+- Pinch zoom verified by hand on the device by the user: works normally.
+- Outline navigation verified with a purpose-built TOC PDF (`outline_test.pdf`:
+  `window.pdf` + 9 hierarchical bookmarks added via pypdf). The 목차 dialog
+  showed all 9 items with correct indentation and page numbers, and tapping
+  `3. 데이터베이스 구조 · 9쪽` jumped exactly to that page.
+- Note: the adb connection needed re-authorization mid-session (device showed
+  `unauthorized` after the adb daemon restarted); resolved by revoking and
+  re-accepting USB debugging on the phone with "always allow".
+
 Immediate next actions:
 
-- Manual pinch-zoom check; manual outline check with a TOC-bearing PDF.
 - Ink/freehand annotation type (the headline use case for a note-taking viewer).
 - Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
   Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan. Needs the
