@@ -137,10 +137,52 @@ Validation:
   - Rendering: `big_pages.pdf` first page 57ms, `big_scan.pdf` first page 74ms, `window.pdf` 37ms — all gates PASS, no OOM.
   - Storage: all 5 spike checks pass for `big_pages.pdf` (incremental, atomic move, prefix unchanged, 5 annotations, 3 backups).
 
+Viewer v1 pass (same day, third session): document-of-record + first annotation UX.
+
+- Wired `DocumentStore` into the viewer. Opening a PDF now imports it into
+  `filesDir/documents/<id>/` as a document of record (id = SHA-256 of the first
+  64KB + length, so reopening the same source resumes the same annotated copy).
+  The original file is never modified.
+- First annotation UX: long-press on a page → note dialog → square annotation at
+  the pressed position. Save path is `DocumentStore.saveEdit` = backup → temp
+  incremental save → atomic replace. After saving, the session reopens and the
+  page re-renders with the annotation; scroll position is preserved.
+- View coordinates map to PDF points via the new `PdfSession.pageBounds`.
+- Recent-documents list on the start screen (name.txt per store dir, newest 5).
+- Added the AGPL-3.0 `LICENSE` file.
+
+Device validation (Galaxy S25, all via adb automation):
+
+- Annotation E2E: long-press on `window.pdf` page 1 → typed `EverInk-note-1` →
+  saved. Pulled the document of record with `run-as`: page 0 has 1 `/Square`
+  annotation with the exact contents; 1 backup generation existed. The yellow
+  square rendered immediately in the viewer.
+- Persistence: force-stopped the app, relaunched, opened via the recent list —
+  the annotation is still rendered. Core "annotations never disappear" promise
+  now demonstrated end-to-end in the product UI.
+- Password-protected PDF (`locked.pdf`, pypdf-encrypted, password `everink123`):
+  password dialog appeared, correct password opened the document (11p shown).
+  The wrong-password branch was not exercised on device.
+- Truncated/damaged PDF (`corrupt.pdf`, front half with zeroed bytes): MuPDF
+  auto-repairs, opens without crash, but pages render blank — acceptable for v0,
+  should later surface a "document was repaired" notice.
+- Unparseable file (`garbage.pdf`, random bytes): no crash, toast
+  `문서를 열 수 없습니다: no objects found`, start screen stays usable.
+- Note: the first automated save attempt failed because the IME shifted the
+  dialog and the scripted tap missed the save button — an automation artifact,
+  not an app bug. Re-run with uiautomator-derived coordinates succeeded.
+
+Known gaps noted for later:
+
+- Large documents copy fully on each `saveEdit` staging step (375MB doc → ~seconds);
+  consider staging once per editing session instead of per annotation.
+- No way to delete a document from the recent list yet.
+- `corrupt.pdf`-style repaired documents show blank pages with no notice.
+
 Immediate next actions:
 
-- Viewer: pinch zoom + double-tap zoom, page position restore, and open-history list.
-- Wire `DocumentStore` into the viewer so opened PDFs become documents of record (currently read-only cache copies).
-- First annotation UX (select area → square note) using `AnnotationWriter` through `DocumentStore.saveEdit`.
-- Test password-protected and corrupt PDFs on device (dialog path was only exercised locally).
-- Decide GitHub repository setup (AGPL-3.0 LICENSE file, README in English) before publishing.
+- Pinch zoom + double-tap zoom in the viewer.
+- Annotation editing/deleting; show annotation contents on tap.
+- Recent-list management (delete, rename).
+- Set up the GitHub repository (AGPL-3.0, English README) — GitHub → IzzyOnDroid →
+  Play (12 testers × 14 days) → F-Droid, per the Phase 2 launch plan.

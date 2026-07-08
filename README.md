@@ -25,6 +25,11 @@ As of 2026-07-08:
   - `core/annot/AnnotationWriter` — appearance-stream annotation writes
 - `viewer/ViewerActivity` is the launcher: continuous vertical page viewing, SAF and
   ACTION_VIEW open paths, password prompt, background rendering with an LRU cache.
+- Opened PDFs are imported as documents of record under `filesDir/documents/<id>/`;
+  long-press on a page adds a note (square annotation) saved through the
+  backup → incremental → atomic-replace pipeline. Annotations survive app restarts.
+- A recent-documents list on the start screen reopens existing documents of record.
+- `LICENSE` is AGPL-3.0.
 - `BenchmarkActivity` runs rendering benchmarks for PDFs selected through SAF or pushed into the app folder.
 - `StorageActivity` runs the storage pipeline spike from SAF-selected PDFs or PDFs in the app folder.
 - `StorageSpike` verifies the `DocumentStore`/`AnnotationWriter` pipeline byte-for-byte: incremental saves, prefix preservation, atomic replacement, backup generations, annotation round trips.
@@ -98,8 +103,9 @@ The storage spike currently verifies:
 
 ## Next Work
 
-1. Viewer polish: pinch/double-tap zoom, scroll position restore, recent-files list.
-2. Route viewer opens through `DocumentStore` so every opened PDF becomes a document of record.
-3. First annotation UX (square note) via `AnnotationWriter` + `DocumentStore.saveEdit`.
-4. Device-test password-protected and corrupt PDFs in the viewer.
-5. Decide the final package id and AGPL/F-Droid release posture; add a LICENSE file and set up the GitHub repository (GitHub → IzzyOnDroid → Play → F-Droid order).
+1. Pinch/double-tap zoom in the viewer.
+2. Annotation editing/deleting; show note contents on tap.
+3. Recent-list management (delete, rename); notice for auto-repaired documents.
+4. Avoid full-file staging copies per annotation on very large documents.
+5. Decide the final package id; set up the GitHub repository and follow the
+   GitHub → IzzyOnDroid → Play → F-Droid release order.

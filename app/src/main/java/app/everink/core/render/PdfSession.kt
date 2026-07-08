@@ -41,12 +41,22 @@ class PdfSession private constructor(
     /** 페이지의 세로/가로 비율(레이아웃 자리표시자 높이 계산용). */
     @Synchronized
     fun pageAspectRatio(index: Int): Float {
+        val b = pageBounds(index)
+        return if (b.width > 0f) b.height / b.width else 1.4142f
+    }
+
+    data class PageBounds(val x0: Float, val y0: Float, val x1: Float, val y1: Float) {
+        val width: Float get() = x1 - x0
+        val height: Float get() = y1 - y0
+    }
+
+    /** 페이지 경계(PDF 포인트 단위). 뷰 좌표 → 문서 좌표 변환용. */
+    @Synchronized
+    fun pageBounds(index: Int): PageBounds {
         val page = doc.loadPage(index)
         try {
             val b = page.bounds
-            val w = b.x1 - b.x0
-            val h = b.y1 - b.y0
-            return if (w > 0f) h / w else 1.4142f
+            return PageBounds(b.x0, b.y0, b.x1, b.y1)
         } finally {
             page.destroy()
         }
