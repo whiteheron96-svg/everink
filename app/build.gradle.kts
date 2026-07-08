@@ -1,6 +1,15 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
+}
+
+// 릴리스 서명 정보는 repo 밖(~/.everink-release/keystore.properties)에서 읽는다.
+// 파일이 없으면 release 빌드는 서명 없이 만들어진다(CI 등).
+val keystoreProps = Properties().apply {
+    val f = file(System.getProperty("user.home") + "/.everink-release/keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -13,12 +22,28 @@ android {
         minSdk = 26          // PRD 오픈퀘스천 #3: API 26 채택(SAF 성숙도 기준)
         targetSdk = 35
         versionCode = 1
-        versionName = "0.5.0-spike"
+        versionName = "0.1.0"
+    }
+
+    signingConfigs {
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
         release {
+            // v0.1.0: MuPDF JNI 경계의 난독화 리스크를 피하기 위해 minify 비활성.
+            // APK 크기 최적화는 이후 릴리스에서 keep 규칙과 함께 검토.
             isMinifyEnabled = false
+            if (keystoreProps.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
 
