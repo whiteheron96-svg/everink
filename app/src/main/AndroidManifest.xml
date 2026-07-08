@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!--
+      ★ 핵심 원칙 P3 (Verifiable Honesty):
+      INTERNET 권한을 의도적으로 선언하지 않는다.
+      광고·추적·가짜알림이 구조적으로 불가능함을 권한 목록이 증명한다.
+      문서 접근은 SAF(문서 선택기)로 처리 → 저장소 권한도 최소화.
+    -->
+
+    <application
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@drawable/ic_launcher"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Material3.DayNight.NoActionBar">
+
+        <activity
+            android:name=".bench.BenchmarkActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".bench.StorageActivity"
+            android:exported="true" />
+    </application>
+</manifest>
