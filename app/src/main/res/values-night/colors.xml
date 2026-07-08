@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EverInk 디자인 토큰 · "심야 잉크" (다크) -->
+<resources>
+    <color name="paper_bg">#131722</color>
+    <color name="paper_surface">#1C2230</color>
+    <color name="outline_soft">#353C4A</color>
+
+    <color name="ink_strong">#EAE6DC</color>
+    <color name="ink_dim">#A69F90</color>
+
+    <color name="ink_primary">#9FB8E6</color>
+    <color name="amber">#F5B301</color>
+
+    <color name="btn_bg">#2F4C7C</color>
+    <color name="btn_fg">#EAE6DC</color>
+
+    <color name="overlay_bg">#E60E1420</color>
+    <color name="overlay_fg">#EAE6DC</color>
+
+    <color name="viewer_bg">#0D1117</color>
+</resources>

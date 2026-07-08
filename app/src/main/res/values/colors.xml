@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- EverInk 디자인 토큰 · "잉크 & 종이" (라이트) — docs/DESIGN.md 참조 -->
+<resources>
+    <!-- 배경/표면 -->
+    <color name="paper_bg">#FAF6EE</color>          <!-- 종이 크림 -->
+    <color name="paper_surface">#FFFFFF</color>     <!-- 카드/다이얼로그 표면 -->
+    <color name="outline_soft">#E3DAC6</color>      <!-- 옅은 경계선 -->
+
+    <!-- 텍스트 -->
+    <color name="ink_strong">#1C1B18</color>        <!-- 먹색 본문 -->
+    <color name="ink_dim">#6B6455</color>           <!-- 보조 텍스트 -->
+
+    <!-- 브랜드 -->
+    <color name="ink_primary">#1B3A6B</color>       <!-- 잉크 네이비 -->
+    <color name="amber">#F5B301</color>             <!-- 주석 앰버 -->
+
+    <!-- 버튼 -->
+    <color name="btn_bg">#1B3A6B</color>
+    <color name="btn_fg">#FFFFFF</color>
+
+    <!-- 뷰어 오버레이(도구바·상태 필) -->
+    <color name="overlay_bg">#E616233B</color>      <!-- 짙은 잉크, 90% -->
+    <color name="overlay_fg">#F5F1E6</color>
+
+    <!-- 문서 주변 배경 -->
+    <color name="viewer_bg">#24272E</color>
+
+    <!-- 런처 아이콘 -->
+    <color name="icon_bg">#FAF6EE</color>
+</resources>

@@ -29,7 +29,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import app.everink.R
 import app.everink.bench.BenchmarkActivity
+import app.everink.ui.InkUi
 import app.everink.core.annot.AnnotationWriter
 import app.everink.core.render.PdfSession
 import app.everink.core.store.DocumentStore
@@ -73,6 +75,7 @@ class ViewerActivity : Activity() {
     private lateinit var btnInkCancel: TextView
     private lateinit var btnInkPen: TextView
     private lateinit var btnInkUndo: TextView
+    private lateinit var btnClose: TextView
     private var lastQuery: String = ""
     // 페이지별 검색 일치(바깥=건, 안쪽=사각형들). PDF 포인트 좌표.
     private val searchHits = HashMap<Int, List<List<RectF>>>()
@@ -125,29 +128,50 @@ class ViewerActivity : Activity() {
 
         recentList = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
 
+        val pad = InkUi.dp(this, 24f)
         emptyView = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
-            setPadding(64, 64, 64, 64)
+            setBackgroundColor(InkUi.color(this@ViewerActivity, R.color.paper_bg))
+            setPadding(pad, pad, pad, pad)
+            // 워드마크: "Ever"는 잉크 네이비, "Ink"는 앰버
             addView(TextView(this@ViewerActivity).apply {
-                text = "EverInk"
-                textSize = 28f
+                text = android.text.SpannableStringBuilder().apply {
+                    append("Ever")
+                    setSpan(android.text.style.ForegroundColorSpan(
+                        InkUi.color(this@ViewerActivity, R.color.ink_primary)), 0, 4, 0)
+                    append("Ink")
+                    setSpan(android.text.style.ForegroundColorSpan(
+                        InkUi.color(this@ViewerActivity, R.color.amber)), 4, 7, 0)
+                }
+                textSize = 34f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 8)
+                setPadding(0, 0, 0, InkUi.dp(this@ViewerActivity, 6f))
             })
             addView(TextView(this@ViewerActivity).apply {
                 text = "주석이 절대 사라지지 않는 PDF 뷰어"
-                textSize = 13f
+                textSize = 13.5f
+                setTextColor(InkUi.color(this@ViewerActivity, R.color.ink_dim))
                 gravity = Gravity.CENTER
-                setPadding(0, 0, 0, 48)
+                setPadding(0, 0, 0, InkUi.dp(this@ViewerActivity, 36f))
             })
-            addView(Button(this@ViewerActivity).apply {
+            addView(TextView(this@ViewerActivity).apply {
                 text = "PDF 열기"
+                textSize = 16f
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+                setTextColor(InkUi.color(this@ViewerActivity, R.color.btn_fg))
+                gravity = Gravity.CENTER
+                background = InkUi.pill(InkUi.color(this@ViewerActivity, R.color.btn_bg), 26f, this@ViewerActivity)
                 setOnClickListener { openPicker() }
-            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            }, LinearLayout.LayoutParams(MATCH_PARENT, InkUi.dp(this@ViewerActivity, 52f)))
             addView(recentList, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
-            addView(Button(this@ViewerActivity).apply {
+            addView(TextView(this@ViewerActivity).apply {
                 text = "벤치마크·스파이크 도구"
+                textSize = 12f
+                setTextColor(InkUi.color(this@ViewerActivity, R.color.ink_dim))
+                gravity = Gravity.CENTER
+                setPadding(0, InkUi.dp(this@ViewerActivity, 40f), 0, 0)
                 setOnClickListener {
                     startActivity(Intent(this@ViewerActivity, BenchmarkActivity::class.java))
                 }
@@ -156,7 +180,7 @@ class ViewerActivity : Activity() {
 
         pageList = ZoomableRecyclerView(this).apply {
             layoutManager = LinearLayoutManager(this@ViewerActivity)
-            setBackgroundColor(Color.rgb(0x22, 0x22, 0x22))
+            setBackgroundColor(InkUi.color(this@ViewerActivity, R.color.viewer_bg))
             visibility = View.GONE
             onSingleTap = { x, y -> handlePageTap(x, y) }
             onScaleSettled = { scale -> onZoomSettled(scale) }
@@ -165,13 +189,15 @@ class ViewerActivity : Activity() {
 
         topBar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.argb(0xAA, 0, 0, 0))
+            background = InkUi.pill(InkUi.color(this@ViewerActivity, R.color.overlay_bg), 22f, this@ViewerActivity)
             visibility = View.GONE
+            val px = InkUi.dp(this@ViewerActivity, 13f)
+            val py = InkUi.dp(this@ViewerActivity, 9f)
             fun tool(label: String, onClick: () -> Unit) = TextView(this@ViewerActivity).apply {
                 text = label
-                textSize = 14f
-                setTextColor(Color.WHITE)
-                setPadding(36, 20, 36, 20)
+                textSize = 13.5f
+                setTextColor(InkUi.color(this@ViewerActivity, R.color.overlay_fg))
+                setPadding(px, py, px, py)
                 setOnClickListener { onClick() }
             }
             btnSearch = tool("검색") { promptSearch() }
@@ -182,6 +208,7 @@ class ViewerActivity : Activity() {
             btnInkUndo = tool("↩") { undoInkStroke() }
             btnInkSave = tool("저장") { saveInk() }
             btnInkCancel = tool("취소") { setInkMode(false) }
+            btnClose = tool("✕") { closeToHome() }
             btnInkPen.visibility = View.GONE
             btnInkUndo.visibility = View.GONE
             btnInkSave.visibility = View.GONE
@@ -194,20 +221,28 @@ class ViewerActivity : Activity() {
             addView(btnInkUndo)
             addView(btnInkSave)
             addView(btnInkCancel)
+            addView(btnClose)
         }
 
         statusView = TextView(this).apply {
             textSize = 12f
-            setPadding(24, 12, 24, 12)
-            setBackgroundColor(Color.argb(0xAA, 0, 0, 0))
-            setTextColor(Color.WHITE)
+            val hx = InkUi.dp(this@ViewerActivity, 14f)
+            val hy = InkUi.dp(this@ViewerActivity, 7f)
+            setPadding(hx, hy, hx, hy)
+            background = InkUi.pill(InkUi.color(this@ViewerActivity, R.color.overlay_bg), 18f, this@ViewerActivity)
+            setTextColor(InkUi.color(this@ViewerActivity, R.color.overlay_fg))
             visibility = View.GONE
         }
 
         root.addView(pageList, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
         root.addView(emptyView, FrameLayout.LayoutParams(MATCH_PARENT, MATCH_PARENT))
-        root.addView(statusView, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END))
-        root.addView(topBar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END))
+        val m = InkUi.dp(this, 10f)
+        root.addView(statusView, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.BOTTOM or Gravity.END).apply {
+            setMargins(m, m, m, m)
+        })
+        root.addView(topBar, FrameLayout.LayoutParams(WRAP_CONTENT, WRAP_CONTENT, Gravity.TOP or Gravity.END).apply {
+            setMargins(m, m, m, m)
+        })
 
         // targetSdk 35 edge-to-edge: 도구바/상태 표시가 시스템 바와 겹치지 않게 인셋 적용
         root.setOnApplyWindowInsetsListener { _, insets ->
@@ -223,8 +258,9 @@ class ViewerActivity : Activity() {
                 @Suppress("DEPRECATION")
                 bottom = insets.systemWindowInsetBottom
             }
-            (topBar.layoutParams as FrameLayout.LayoutParams).topMargin = top
-            (statusView.layoutParams as FrameLayout.LayoutParams).bottomMargin = bottom
+            val m2 = InkUi.dp(this, 10f)
+            (topBar.layoutParams as FrameLayout.LayoutParams).topMargin = top + m2
+            (statusView.layoutParams as FrameLayout.LayoutParams).bottomMargin = bottom + m2
             topBar.requestLayout()
             statusView.requestLayout()
             insets
@@ -236,6 +272,24 @@ class ViewerActivity : Activity() {
         // 외부 앱에서 "PDF 열기"로 진입한 경우
         if (intent?.action == Intent.ACTION_VIEW) {
             intent.data?.let { openFromUri(it) }
+        }
+    }
+
+    /** 문서를 닫고 홈(최근 문서)으로 돌아간다. */
+    private fun closeToHome() {
+        closeDocument()
+        pageList.visibility = View.GONE
+        statusView.visibility = View.GONE
+        emptyView.visibility = View.VISIBLE
+        refreshRecent()
+    }
+
+    @Deprecated("Deprecated in Java")
+    override fun onBackPressed() {
+        when {
+            inkMode -> setInkMode(false)          // 필기 중이면 필기만 종료
+            session != null -> closeToHome()      // 문서 열람 중이면 문서 닫기
+            else -> @Suppress("DEPRECATION") super.onBackPressed()
         }
     }
 
@@ -560,6 +614,7 @@ class ViewerActivity : Activity() {
         btnInkUndo.visibility = if (on) View.VISIBLE else View.GONE
         btnInkSave.visibility = if (on) View.VISIBLE else View.GONE
         btnInkCancel.visibility = if (on) View.VISIBLE else View.GONE
+        btnClose.visibility = if (on) View.GONE else View.VISIBLE
         if (!on) {
             inkDone.clear()
             activeStroke = null
@@ -834,19 +889,41 @@ class ViewerActivity : Activity() {
         recentList.addView(TextView(this).apply {
             text = "최근 문서"
             textSize = 13f
-            setPadding(8, 40, 8, 8)
+            setTextColor(InkUi.color(this@ViewerActivity, R.color.ink_dim))
+            setPadding(InkUi.dp(this@ViewerActivity, 4f), InkUi.dp(this@ViewerActivity, 28f),
+                0, InkUi.dp(this@ViewerActivity, 10f))
         })
         dirs.forEach { dir ->
             val name = File(dir, "name.txt").takeIf { it.exists() }?.readText()?.trim() ?: dir.name
-            recentList.addView(Button(this).apply {
-                text = name
-                isAllCaps = false
+            val pages = "길게 누르면 삭제"
+            recentList.addView(LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = InkUi.card(this@ViewerActivity,
+                    InkUi.color(this@ViewerActivity, R.color.paper_surface),
+                    InkUi.color(this@ViewerActivity, R.color.outline_soft))
+                val cx = InkUi.dp(this@ViewerActivity, 16f)
+                val cy = InkUi.dp(this@ViewerActivity, 13f)
+                setPadding(cx, cy, cx, cy)
+                addView(TextView(this@ViewerActivity).apply {
+                    text = name
+                    textSize = 15f
+                    setTypeface(typeface, android.graphics.Typeface.BOLD)
+                    setTextColor(InkUi.color(this@ViewerActivity, R.color.ink_strong))
+                })
+                addView(TextView(this@ViewerActivity).apply {
+                    text = pages
+                    textSize = 11.5f
+                    setTextColor(InkUi.color(this@ViewerActivity, R.color.ink_dim))
+                    setPadding(0, InkUi.dp(this@ViewerActivity, 2f), 0, 0)
+                })
                 setOnClickListener { openStore(DocumentStore(dir), name) }
                 setOnLongClickListener {
                     confirmDeleteRecent(dir, name)
                     true
                 }
-            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT))
+            }, LinearLayout.LayoutParams(MATCH_PARENT, WRAP_CONTENT).apply {
+                setMargins(0, 0, 0, InkUi.dp(this@ViewerActivity, 8f))
+            })
         }
     }
 

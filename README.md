@@ -115,6 +115,13 @@ The storage spike currently verifies:
 - annotation appearance stream update
 - annotation count after reopening the saved document
 
+## Design
+
+The "잉크 & 종이" design system (ink navy, paper cream, annotation amber, 심야
+잉크 dark mode) is documented in `docs/DESIGN.md`. Colors live in
+`res/values(-night)/colors.xml`; programmatic UI goes through
+`app.everink.ui.InkUi`.
+
 ## Next Work
 
 1. Manual: confirm `Download/EverInk_ink_check.pdf` ink rendering in Polaris/Xodo.

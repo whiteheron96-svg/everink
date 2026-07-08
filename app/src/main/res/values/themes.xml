@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- EverInk 공식 테마 — Material3 위에 잉크&종이 팔레트를 입힌다.
+         다이얼로그·위젯이 이 색을 따라간다. -->
+    <style name="Theme.EverInk" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/ink_primary</item>
+        <item name="colorOnPrimary">@color/btn_fg</item>
+        <item name="colorSecondary">@color/amber</item>
+        <item name="colorOnSecondary">@color/ink_strong</item>
+        <item name="android:colorBackground">@color/paper_bg</item>
+        <item name="colorSurface">@color/paper_surface</item>
+        <item name="colorOnSurface">@color/ink_strong</item>
+        <item name="colorOnSurfaceVariant">@color/ink_dim</item>
+        <item name="colorOutline">@color/outline_soft</item>
+        <item name="android:textColorPrimary">@color/ink_strong</item>
+        <item name="android:textColorSecondary">@color/ink_dim</item>
+    </style>
+</resources>

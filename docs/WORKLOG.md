@@ -362,9 +362,32 @@ Release v0.1.0 (same day):
 
 Beta testing can start now: send testers the release link.
 
+Design system pass ("잉크 & 종이", same day):
+
+- Direction chosen by the user from three proposals: ink navy + paper cream +
+  annotation amber. Full token set documented in `docs/DESIGN.md`.
+- Implementation:
+  - Color tokens in `values/colors.xml` + `values-night/colors.xml` (심야 잉크
+    dark palette switches automatically).
+  - `Theme.EverInk` overrides the Material3 palette, so dialogs and widgets
+    follow the brand without per-view styling.
+  - `app.everink.ui.InkUi` helper for programmatic pills/cards/dp.
+  - Home redesigned: Ever(navy)+Ink(amber) wordmark, navy pill primary button,
+    card-style recent list, de-emphasized bench link on paper background.
+  - Viewer overlays redesigned: toolbar and status are ink-navy pills with
+    cream text, inset-aware margins.
+  - New adaptive launcher icon: navy fountain-pen nib + amber ink drop on
+    paper cream (with monochrome layer); app label now "EverInk".
+- New feature (user request): document close. ✕ button in the toolbar and the
+  back key both close the document back to the home/recent screen; back exits
+  ink mode first if active.
+- Device-verified (light + dark screenshots): home, viewer pills, ✕ close
+  returning to home, and the 심야 잉크 dark palette all render as designed.
+
 Immediate next actions:
 
-- IzzyOnDroid submission (release with APK now exists).
+- IzzyOnDroid submission (release with APK now exists) — cut v0.1.1 with the
+  design system first so store screenshots use the new look.
 - Recruit beta testers; enroll them in Play closed testing once the developer
   account is ready (the 12 testers × 14 days clock starts there).
 - Consider ABI splits or app bundle later to cut the 45MB APK size.
