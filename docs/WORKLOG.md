@@ -404,6 +404,26 @@ Release v0.1.2 (same day): per-ABI APKs.
 - Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.2
   with all four APKs and a "which file do I download" guide in the notes.
 
+Share-sheet intake (post-0.1.2, unreleased):
+
+- New feature: PDFs can now enter EverInk via another app's "공유"(Share)
+  button, not just "PDF로 열기"(Open with). Added an `ACTION_SEND` +
+  `application/pdf` intent-filter alongside the existing `ACTION_VIEW` one.
+- `ViewerActivity` gained `incomingUri(intent)` which pulls the document URI
+  from either `ACTION_VIEW` (intent.data) or `ACTION_SEND`
+  (EXTRA_STREAM, SDK-33 typed getter with a pre-Tiramisu fallback). Both
+  onCreate and onNewIntent now route through it.
+- Device-verified (SM-S931N, release build installed as a data-preserving
+  update over 0.1.2): share→open works both cold (app closed, onCreate path)
+  and warm (app already showing a doc, onNewIntent switches to the shared
+  one); no crashes; the three existing documents of record survived the
+  update. Note: `adb am start --grant-read-uri-permission` does NOT grant
+  URIs passed only in EXTRA_STREAM (grant covers data/ClipData only), so a
+  naive adb SEND shows "PDF를 읽지 못했습니다"; the real system Sharesheet
+  migrates EXTRA_STREAM into ClipData and grants it, so real shares read
+  fine — confirmed by granting the same URI via the data field.
+- Not yet released; fold into the next version bump.
+
 Immediate next actions:
 
 - IzzyOnDroid submission: user creates a Codeberg account and files the App

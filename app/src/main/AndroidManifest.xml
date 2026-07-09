@@ -32,6 +32,12 @@
                 <data android:scheme="file" />
                 <data android:mimeType="application/pdf" />
             </intent-filter>
+            <!-- 공유 시트("공유" 버튼)에서 PDF를 받기 위한 필터 -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
         </activity>
 
         <!-- 스파이크/디버그 도구 (adb 자동화용으로 exported 유지) -->

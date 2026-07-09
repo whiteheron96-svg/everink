@@ -269,10 +269,21 @@ class ViewerActivity : Activity() {
 
         refreshRecent()
 
-        // 외부 앱에서 "PDF 열기"로 진입한 경우
-        if (intent?.action == Intent.ACTION_VIEW) {
-            intent.data?.let { openFromUri(it) }
-        }
+        // 외부 앱에서 "PDF 열기" 또는 "공유"로 진입한 경우
+        incomingUri(intent)?.let { openFromUri(it) }
+    }
+
+    /** ACTION_VIEW(열기)와 ACTION_SEND(공유) 인텐트에서 문서 URI를 꺼낸다. */
+    private fun incomingUri(intent: Intent?): Uri? = when (intent?.action) {
+        Intent.ACTION_VIEW -> intent.data
+        Intent.ACTION_SEND ->
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                intent.getParcelableExtra(Intent.EXTRA_STREAM)
+            }
+        else -> null
     }
 
     /** 문서를 닫고 홈(최근 문서)으로 돌아간다. */
@@ -295,10 +306,8 @@ class ViewerActivity : Activity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        // 앱이 이미 떠 있는 상태에서 외부 "PDF 열기"로 재진입한 경우
-        if (intent.action == Intent.ACTION_VIEW) {
-            intent.data?.let { openFromUri(it) }
-        }
+        // 앱이 이미 떠 있는 상태에서 외부 "PDF 열기"/"공유"로 재진입한 경우
+        incomingUri(intent)?.let { openFromUri(it) }
     }
 
     override fun onDestroy() {
