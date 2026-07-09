@@ -443,10 +443,14 @@ Tooling: beta-tester auto-notify (same day).
   release tag appears. Uses `/releases` (not `/releases/latest`, which excludes
   pre-releases) so it also notifies for the pre-release beta builds. Sends per
   tester (no address leakage) and dedupes via ScriptProperties(lastNotifiedTag).
-- Note surfaced while wiring this up: `/releases/latest` currently 404s because
-  all four releases are pre-release — so that URL is not usable as a stable
-  email link yet. Left as pre-release per the user's choice; the script resolves
-  the newest tag itself instead.
+- Note surfaced while wiring this up: `/releases/latest` had been 404ing because
+  every release was flagged pre-release (that endpoint excludes pre-releases).
+  Resolved by marking v0.1.3 as the latest full release, so
+  https://github.com/whiteheron96-svg/everink/releases/latest now resolves to it
+  and is usable as a non-staling link in tester emails. (Reversible via
+  `gh release edit v0.1.3 --prerelease` if the beta badge is wanted back.) The
+  auto-notify script still reads `/releases` so it also covers any future
+  pre-release builds.
 
 Immediate next actions:
 
