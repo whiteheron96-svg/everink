@@ -404,7 +404,7 @@ Release v0.1.2 (same day): per-ABI APKs.
 - Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.2
   with all four APKs and a "which file do I download" guide in the notes.
 
-Share-sheet intake (post-0.1.2, unreleased):
+Release v0.1.3 (same day): share-sheet intake. versionCode 4.
 
 - New feature: PDFs can now enter EverInk via another app's "공유"(Share)
   button, not just "PDF로 열기"(Open with). Added an `ACTION_SEND` +
@@ -422,7 +422,11 @@ Share-sheet intake (post-0.1.2, unreleased):
   naive adb SEND shows "PDF를 읽지 못했습니다"; the real system Sharesheet
   migrates EXTRA_STREAM into ClipData and grants it, so real shares read
   fine — confirmed by granting the same URI via the data field.
-- Not yet released; fold into the next version bump.
+- Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.3
+  with all four APKs. Beta testers should now be pointed at this link.
+- IzzyOnDroid submission intentionally deferred until the app leaves beta and
+  the applicationId (app.everink) is final — public listing locks the package
+  name permanently. GitHub releases are used for beta distribution meanwhile.
 
 Immediate next actions:
 
