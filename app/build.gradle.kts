@@ -81,7 +81,10 @@ dependencies {
 // ABI별 versionCode: base*10 + 오프셋 (universal이 가장 낮아 기기별 APK가 우선된다)
 androidComponents {
     onVariants { variant ->
-        val base = 3   // defaultConfig.versionCode와 동일하게 유지할 것
+        // defaultConfig.versionCode에서 직접 파생 — 버전을 올릴 때 이 값을
+        // 따로 고칠 필요가 없다(예전엔 하드코딩이라 어긋나 0.1.3이 32로 나갔다).
+        val base = android.defaultConfig.versionCode
+            ?: error("defaultConfig.versionCode가 설정되지 않았습니다")
         val abiOffset = mapOf("armeabi-v7a" to 1, "arm64-v8a" to 2, "x86_64" to 3)
         variant.outputs.forEach { output ->
             val abi = output.filters

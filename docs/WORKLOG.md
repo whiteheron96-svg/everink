@@ -424,6 +424,14 @@ Release v0.1.3 (same day): share-sheet intake. versionCode 4.
   fine — confirmed by granting the same URI via the data field.
 - Published https://github.com/whiteheron96-svg/everink/releases/tag/v0.1.3
   with all four APKs. Beta testers should now be pointed at this link.
+- Bug caught during device verification: the ABI-split block had a hardcoded
+  `base = 3` for per-ABI versionCode, separate from defaultConfig.versionCode.
+  Bumping to 0.1.3 left it at 3, so the first-published arm64 APK shipped as
+  versionCode 32 — identical to v0.1.2, meaning testers on 0.1.2 would never
+  be offered it as an update. Fixed by deriving `base` from
+  android.defaultConfig.versionCode (can't drift again); rebuilt (arm64=42,
+  v7a=41, universal=40, x86_64=43) and re-uploaded the release assets with
+  --clobber. Device-verified versionCode=42, docs preserved, no crash.
 - IzzyOnDroid submission intentionally deferred until the app leaves beta and
   the applicationId (app.everink) is final — public listing locks the package
   name permanently. GitHub releases are used for beta distribution meanwhile.
