@@ -436,6 +436,18 @@ Release v0.1.3 (same day): share-sheet intake. versionCode 4.
   the applicationId (app.everink) is final — public listing locks the package
   name permanently. GitHub releases are used for beta distribution meanwhile.
 
+Tooling: beta-tester auto-notify (same day).
+
+- `tools/notify-testers.gs` — Google Apps Script that polls the GitHub
+  releases API on a time trigger and emails a hardcoded tester list when a new
+  release tag appears. Uses `/releases` (not `/releases/latest`, which excludes
+  pre-releases) so it also notifies for the pre-release beta builds. Sends per
+  tester (no address leakage) and dedupes via ScriptProperties(lastNotifiedTag).
+- Note surfaced while wiring this up: `/releases/latest` currently 404s because
+  all four releases are pre-release — so that URL is not usable as a stable
+  email link yet. Left as pre-release per the user's choice; the script resolves
+  the newest tag itself instead.
+
 Immediate next actions:
 
 - IzzyOnDroid submission: user creates a Codeberg account and files the App
